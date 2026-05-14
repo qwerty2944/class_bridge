@@ -40,8 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# unity build artifacts (큰 바이너리 — scripts/sync-unity.sh 로 동기화)
-/public/unity/*.data
-/public/unity/*.wasm
-/public/unity/*.framework.js
-/public/unity/*.loader.js
+# unity build artifacts — git에 포함 (Vercel git 연동 자동배포 위함)
+# /public/unity/*.data
+# /public/unity/*.wasm
+# /public/unity/*.framework.js
+# /public/unity/*.loader.js
