@@ -1,0 +1,224 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { Coins, Sparkles, Trophy } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { Button } from '@/shared/ui/button';
+import { Badge } from '@/shared/ui/badge';
+import { Skeleton } from '@/shared/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
+import { useCurrentTenant } from '@/features/tenant-switch';
+import {
+  ensureCharacter,
+  equipExclusive,
+  fetchCharacter,
+  fetchInventory,
+  setEquipped,
+  updateCharacter,
+} from '@/entities/character';
+import { xpThresholdForLevel } from '@/entities/reward';
+import { UnityProviderClient, useUnity } from '@/shared/unity/provider';
+import { applyAppearance, applyAssetKey, applyColors } from '@/entities/character';
+import {
+  CATEGORY_LABEL_KO,
+  DEFAULT_APPEARANCE,
+  DEFAULT_COLORS,
+  type CharacterAppearance,
+  type CharacterColors,
+} from '@/shared/unity/types';
+import { AppearanceEditor } from '@/features/character-appearance-edit';
+
+export function CharacterClient({ targetUserId }: { targetUserId: string | null }) {
+  const { tenantId, userId, profile, has } = useCurrentTenant();
+  const viewedUserId = targetUserId ?? userId;
+  const isOwner = !!userId && viewedUserId === userId;
+
+  const charQ = useQuery({
+    queryKey: ['character', tenantId, viewedUserId],
+    enabled: !!tenantId && !!viewedUserId,
+    queryFn: async () => {
+      if (isOwner) {
+        return ensureCharacter({ tenantId: tenantId!, userId: userId!, fullName: profile?.full_name });
+      }
+      return fetchCharacter(tenantId!, viewedUserId!);
+    },
+  });
+  const invQ = useQuery({
+    queryKey: ['inventory', charQ.data?.id],
+    enabled: !!charQ.data?.id,
+    queryFn: () => fetchInventory(charQ.data!.id),
+  });
+
+  if (charQ.isLoading) return <Skeleton className="h-[480px]" />;
+  if (!charQ.data) {
+    return (
+      <Card>
+        <CardContent className="p-10 text-center text-sm text-muted-foreground">
+          캐릭터가 없습니다.
+        </CardContent>
+      </Card>
+    );
+  }
+  const character = charQ.data;
+  const inventory = invQ.data ?? [];
+  const xpInLevel = character.xp - xpThresholdForLevel(character.level);
+  const xpForNext = xpThresholdForLevel(character.level + 1) - xpThresholdForLevel(character.level);
+  const progress = Math.min(100, Math.max(0, (xpInLevel / Math.max(1, xpForNext)) * 100));
+
+  return (
+    <div className="space-y-6">
+      <header className="flex items-end justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Sparkles className="h-6 w-6 text-indigo-500" /> {character.name ?? '내 캐릭터'}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {isOwner ? '과제로 XP를 모아 레벨업하고 상점에서 아이템을 장착하세요.' : '학생의 캐릭터 (읽기 전용)'}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant="secondary" className="text-base px-3 py-1 gap-1">
+            <Trophy className="h-4 w-4" /> Lv. {character.level}
+          </Badge>
+          <Badge variant="outline" className="text-base px-3 py-1 gap-1">
+            <Coins className="h-4 w-4 text-amber-500" /> {character.coins.toLocaleString()}
+          </Badge>
+        </div>
+      </header>
+
+      <div className="grid lg:grid-cols-[1fr_360px] gap-6">
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
+            <div className="aspect-square w-full max-w-[520px] mx-auto">
+              <UnityProviderClient>
+                <UnityCharacterSync appearance={character.appearance} colors={character.colors} inventory={inventory.filter((r) => r.equipped)} />
+              </UnityProviderClient>
+            </div>
+            <div className="p-5 border-t">
+              <p className="text-xs text-muted-foreground mb-1.5">
+                XP {character.xp} / {xpThresholdForLevel(character.level + 1)}
+              </p>
+              <div className="h-2 rounded-full bg-foreground/10 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-indigo-500 to-pink-500 transition-all"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Tabs defaultValue="inventory">
+            <TabsList className="grid grid-cols-2 w-full">
+              <TabsTrigger value="inventory">인벤토리</TabsTrigger>
+              {isOwner && <TabsTrigger value="appearance">외형</TabsTrigger>}
+            </TabsList>
+            <TabsContent value="inventory" className="mt-3">
+              <InventoryPanel characterId={character.id} inventory={inventory} canEdit={isOwner} loading={invQ.isLoading} />
+            </TabsContent>
+            {isOwner && (
+              <TabsContent value="appearance" className="mt-3">
+                <AppearanceEditor
+                  characterId={character.id}
+                  appearance={character.appearance}
+                  colors={character.colors}
+                />
+              </TabsContent>
+            )}
+          </Tabs>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UnityCharacterSync({
+  appearance,
+  colors,
+  inventory,
+}: {
+  appearance: CharacterAppearance;
+  colors: CharacterColors;
+  inventory: { item: { asset_key: string; category: string } }[];
+}) {
+  const { isLoaded, send } = useUnity();
+  useEffect(() => {
+    if (!isLoaded) return;
+    applyAppearance(send, appearance);
+    applyColors(send, colors);
+    inventory.forEach((row) => applyAssetKey(send, row.item.asset_key));
+  }, [isLoaded, appearance, colors, inventory, send]);
+  return null;
+}
+
+function InventoryPanel({
+  characterId,
+  inventory,
+  canEdit,
+  loading,
+}: {
+  characterId: string;
+  inventory: Awaited<ReturnType<typeof fetchInventory>>;
+  canEdit: boolean;
+  loading: boolean;
+}) {
+  const qc = useQueryClient();
+  const equip = useMutation({
+    mutationFn: ({ id, category }: { id: string; category: string }) =>
+      equipExclusive(characterId, id, category),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventory', characterId] });
+      toast.success('장착됨');
+    },
+  });
+  const unequip = useMutation({
+    mutationFn: (id: string) => setEquipped(id, false),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory', characterId] }),
+  });
+
+  if (loading) return <Skeleton className="h-40" />;
+  if (inventory.length === 0)
+    return (
+      <Card>
+        <CardContent className="p-6 text-center text-sm text-muted-foreground">
+          보유 아이템이 없습니다. 상점에서 구매해 보세요.
+        </CardContent>
+      </Card>
+    );
+
+  return (
+    <div className="space-y-2 max-h-[460px] overflow-auto pr-1">
+      {inventory.map((row) => (
+        <Card key={row.id}>
+          <CardContent className="p-3 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-md bg-gradient-to-br from-indigo-100 to-pink-100 grid place-items-center text-xs font-semibold">
+              {CATEGORY_LABEL_KO[row.item.category as keyof typeof CATEGORY_LABEL_KO]?.slice(0, 1) ?? '?'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{row.item.name}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {CATEGORY_LABEL_KO[row.item.category as keyof typeof CATEGORY_LABEL_KO]}
+              </p>
+            </div>
+            {canEdit ? (
+              row.equipped ? (
+                <Button size="sm" variant="secondary" onClick={() => unequip.mutate(row.id)}>
+                  해제
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => equip.mutate({ id: row.id, category: row.item.category })}>
+                  장착
+                </Button>
+              )
+            ) : row.equipped ? (
+              <Badge>장착</Badge>
+            ) : null}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}

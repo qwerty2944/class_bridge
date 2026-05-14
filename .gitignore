@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# unity build artifacts (큰 바이너리 — scripts/sync-unity.sh 로 동기화)
+/public/unity/*.data
+/public/unity/*.wasm
+/public/unity/*.framework.js
+/public/unity/*.loader.js
