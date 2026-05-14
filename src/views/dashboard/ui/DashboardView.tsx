@@ -2,7 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { CalendarDays, ClipboardList, GraduationCap, Users, ArrowRight, MessageSquare, TrendingUp, Copy } from 'lucide-react';
+import { CalendarDays, ClipboardList, GraduationCap, Users, ArrowRight, MessageSquare, TrendingUp, Copy, Sparkles } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -11,6 +12,7 @@ import { useCurrentTenant } from '@/features/tenant-switch';
 import { fetchTenantMembers } from '@/entities/tenant';
 import { fetchOrganizations, fetchOrganizationsForUser } from '@/entities/organization';
 import { fetchPosts } from '@/entities/post';
+import { fetchParentLinks } from '@/entities/membership';
 import { ROLE_LABEL } from '@/shared/types/database';
 import { toast } from 'sonner';
 
@@ -36,6 +38,12 @@ export function DashboardClient() {
     queryKey: ['posts', tenantId, 'recent'],
     enabled: !!tenantId,
     queryFn: () => fetchPosts({ tenantId: tenantId! }),
+  });
+
+  const childrenQ = useQuery({
+    queryKey: ['parent-links', tenantId, userId],
+    enabled: !!tenantId && !!userId && has('parent'),
+    queryFn: () => fetchParentLinks(tenantId!, userId!),
   });
 
   if (loading || !tenant) {
@@ -81,6 +89,45 @@ export function DashboardClient() {
           </Button>
         )}
       </div>
+
+      {has('parent') && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-indigo-500" /> 내 자녀
+            </CardTitle>
+            <CardDescription>자녀 카드를 눌러 캐릭터·출결·과제·진도를 확인하세요.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {childrenQ.isLoading ? (
+              <Skeleton className="h-20" />
+            ) : (childrenQ.data ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">
+                아직 등록된 자녀가 없습니다. 학원장에게 자녀 연결을 요청하세요.
+              </p>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {(childrenQ.data ?? []).map((l) => (
+                  <Link
+                    key={l.id}
+                    href={`/students/${l.student_user_id}`}
+                    className="group flex items-center gap-3 rounded-xl border bg-card p-4 hover:shadow-md hover:-translate-y-0.5 transition"
+                  >
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback>{l.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{l.student?.full_name ?? '학생'}</p>
+                      <p className="text-xs text-muted-foreground truncate">{l.student?.email}</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition" />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard

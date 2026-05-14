@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
+import { PasswordInput } from '@/shared/ui/password-input';
 import { createClient } from '@/shared/api/supabase/client';
 
 const schema = z.object({
@@ -53,7 +54,7 @@ export function LoginForm() {
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="password">비밀번호</Label>
-        <Input id="password" type="password" placeholder="••••••••" {...register('password')} />
+        <PasswordInput id="password" placeholder="••••••••" {...register('password')} />
         {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
       </div>
       <Button type="submit" className="w-full" disabled={loading}>

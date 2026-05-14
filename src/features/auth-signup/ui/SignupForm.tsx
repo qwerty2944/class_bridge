@@ -10,13 +10,20 @@ import { toast } from 'sonner';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
+import { PasswordInput } from '@/shared/ui/password-input';
 import { createClient } from '@/shared/api/supabase/client';
 
-const schema = z.object({
-  full_name: z.string().min(2, '이름을 입력해주세요.'),
-  email: z.string().email('이메일을 정확히 입력해주세요.'),
-  password: z.string().min(6, '비밀번호는 6자 이상입니다.'),
-});
+const schema = z
+  .object({
+    full_name: z.string().min(2, '이름을 입력해주세요.'),
+    email: z.string().email('이메일을 정확히 입력해주세요.'),
+    password: z.string().min(6, '비밀번호는 6자 이상입니다.'),
+    password_confirm: z.string().min(1, '비밀번호를 한번 더 입력해주세요.'),
+  })
+  .refine((v) => v.password === v.password_confirm, {
+    path: ['password_confirm'],
+    message: '비밀번호가 일치하지 않습니다.',
+  });
 
 type Values = z.infer<typeof schema>;
 
@@ -27,7 +34,7 @@ export function SignupForm() {
 
   const { register, handleSubmit, formState: { errors } } = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { full_name: '', email: '', password: '' },
+    defaultValues: { full_name: '', email: '', password: '', password_confirm: '' },
   });
 
   const onSubmit = async (values: Values) => {
@@ -70,8 +77,13 @@ export function SignupForm() {
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="password">비밀번호</Label>
-        <Input id="password" type="password" placeholder="6자 이상" {...register('password')} />
+        <PasswordInput id="password" placeholder="6자 이상" {...register('password')} />
         {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="password_confirm">비밀번호 확인</Label>
+        <PasswordInput id="password_confirm" placeholder="비밀번호를 다시 입력" {...register('password_confirm')} />
+        {errors.password_confirm && <p className="text-xs text-red-500">{errors.password_confirm.message}</p>}
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
         {loading && <Loader2 className="h-4 w-4 animate-spin" />} 가입하기

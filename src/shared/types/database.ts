@@ -1,5 +1,7 @@
-// Class Bridge DB 타입 (스키마 supabase/migrations/0001_init.sql 와 1:1 매핑)
-// `supabase gen types typescript`를 돌릴 수 있을 때 자동 생성으로 교체 가능.
+// Class Bridge DB 타입 — 스키마 supabase/migrations/0001_init.sql + 0002_gamification.sql 와 1:1 매핑.
+// MCP 자동생성판은 database.gen.ts 에 보관. 본 파일은 손글씨 + 도메인 union 타입 보존용.
+
+import type { CharacterAppearance, CharacterColors, ShopCategory } from '@/shared/unity/types';
 
 export type Role = 'director' | 'teacher' | 'student' | 'parent';
 export type OrgRole = 'teacher' | 'student';
@@ -9,6 +11,7 @@ export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 export type SubmissionStatus = 'pending' | 'submitted' | 'graded';
 export type PostCategory = 'notice' | 'free' | 'qna';
 export type Relation = 'father' | 'mother' | 'guardian';
+export type RewardSource = 'assignment_grade' | 'admin' | 'level_bonus';
 
 export interface Tenant {
   id: string;
@@ -154,6 +157,53 @@ export interface PostComment {
   created_at: string;
 }
 
+export interface StudentCharacter {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  name: string | null;
+  level: number;
+  xp: number;
+  coins: number;
+  appearance: CharacterAppearance;
+  colors: CharacterColors;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShopItem {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  category: ShopCategory;
+  asset_key: string;
+  payload: Record<string, unknown> | null;
+  icon_url: string | null;
+  price: number;
+  min_level: number;
+  created_at: string;
+}
+
+export interface CharacterInventoryItem {
+  id: string;
+  character_id: string;
+  shop_item_id: string;
+  equipped: boolean;
+  acquired_at: string;
+}
+
+export interface RewardEvent {
+  id: string;
+  character_id: string;
+  source: RewardSource;
+  source_ref: string | null;
+  xp_delta: number;
+  coin_delta: number;
+  note: string | null;
+  created_at: string;
+}
+
 // Supabase Database 타입 (간단형) — supabase-js 제네릭에 넘기기 좋게.
 export type Database = {
   public: {
@@ -211,6 +261,26 @@ export type Database = {
         Row: PostComment;
         Insert: Partial<PostComment> & Pick<PostComment, 'post_id' | 'content'>;
         Update: Partial<PostComment>;
+      };
+      student_characters: {
+        Row: StudentCharacter;
+        Insert: Partial<StudentCharacter> & Pick<StudentCharacter, 'tenant_id' | 'user_id'>;
+        Update: Partial<StudentCharacter>;
+      };
+      shop_items: {
+        Row: ShopItem;
+        Insert: Partial<ShopItem> & Pick<ShopItem, 'tenant_id' | 'name' | 'category' | 'asset_key' | 'price'>;
+        Update: Partial<ShopItem>;
+      };
+      character_inventory: {
+        Row: CharacterInventoryItem;
+        Insert: Partial<CharacterInventoryItem> & Pick<CharacterInventoryItem, 'character_id' | 'shop_item_id'>;
+        Update: Partial<CharacterInventoryItem>;
+      };
+      reward_events: {
+        Row: RewardEvent;
+        Insert: Partial<RewardEvent> & Pick<RewardEvent, 'character_id' | 'source'>;
+        Update: Partial<RewardEvent>;
       };
     };
   };

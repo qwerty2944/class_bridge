@@ -18,6 +18,7 @@ import {
   setEquipped,
   updateCharacter,
 } from '@/entities/character';
+import type { StudentCharacter, InventoryRow } from '@/entities/character';
 import { xpThresholdForLevel } from '@/entities/reward';
 import { UnityProviderClient, useUnity } from '@/shared/unity/provider';
 import { applyAppearance, applyAssetKey, applyColors } from '@/entities/character';
@@ -31,7 +32,7 @@ import {
 import { AppearanceEditor } from '@/features/character-appearance-edit';
 
 export function CharacterClient({ targetUserId }: { targetUserId: string | null }) {
-  const { tenantId, userId, profile, has } = useCurrentTenant();
+  const { tenantId, userId, profile } = useCurrentTenant();
   const viewedUserId = targetUserId ?? userId;
   const isOwner = !!userId && viewedUserId === userId;
 
@@ -61,8 +62,37 @@ export function CharacterClient({ targetUserId }: { targetUserId: string | null 
       </Card>
     );
   }
-  const character = charQ.data;
-  const inventory = invQ.data ?? [];
+
+  return (
+    <CharacterScene
+      character={charQ.data}
+      inventory={invQ.data ?? []}
+      inventoryLoading={invQ.isLoading}
+      isOwner={isOwner}
+    />
+  );
+}
+
+function CharacterScene({
+  character,
+  inventory,
+  inventoryLoading,
+  isOwner,
+}: {
+  character: StudentCharacter;
+  inventory: InventoryRow[];
+  inventoryLoading: boolean;
+  isOwner: boolean;
+}) {
+  const [draftAppearance, setDraftAppearance] = useState<CharacterAppearance>(character.appearance);
+  const [draftColors, setDraftColors] = useState<CharacterColors>(character.colors);
+
+  // 저장 후 query refetch 로 character 가 갱신되면 draft 도 동기화.
+  useEffect(() => {
+    setDraftAppearance(character.appearance);
+    setDraftColors(character.colors);
+  }, [character.appearance, character.colors]);
+
   const xpInLevel = character.xp - xpThresholdForLevel(character.level);
   const xpForNext = xpThresholdForLevel(character.level + 1) - xpThresholdForLevel(character.level);
   const progress = Math.min(100, Math.max(0, (xpInLevel / Math.max(1, xpForNext)) * 100));
@@ -93,7 +123,7 @@ export function CharacterClient({ targetUserId }: { targetUserId: string | null 
           <CardContent className="p-0">
             <div className="aspect-square w-full max-w-[520px] mx-auto">
               <UnityProviderClient>
-                <UnityCharacterSync appearance={character.appearance} colors={character.colors} inventory={inventory.filter((r) => r.equipped)} />
+                <UnityCharacterSync appearance={draftAppearance} colors={draftColors} inventory={inventory.filter((r) => r.equipped)} />
               </UnityProviderClient>
             </div>
             <div className="p-5 border-t">
@@ -117,14 +147,16 @@ export function CharacterClient({ targetUserId }: { targetUserId: string | null 
               {isOwner && <TabsTrigger value="appearance">외형</TabsTrigger>}
             </TabsList>
             <TabsContent value="inventory" className="mt-3">
-              <InventoryPanel characterId={character.id} inventory={inventory} canEdit={isOwner} loading={invQ.isLoading} />
+              <InventoryPanel characterId={character.id} inventory={inventory} canEdit={isOwner} loading={inventoryLoading} />
             </TabsContent>
             {isOwner && (
               <TabsContent value="appearance" className="mt-3">
                 <AppearanceEditor
                   characterId={character.id}
-                  appearance={character.appearance}
-                  colors={character.colors}
+                  appearance={draftAppearance}
+                  colors={draftColors}
+                  onAppearanceChange={setDraftAppearance}
+                  onColorsChange={setDraftColors}
                 />
               </TabsContent>
             )}

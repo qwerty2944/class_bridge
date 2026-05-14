@@ -10,9 +10,10 @@ import { Label } from '@/shared/ui/label';
 import { updateCharacter } from '@/entities/character';
 import type { CharacterAppearance, CharacterColors } from '@/shared/unity/types';
 
+// Unity 에 실제 send 되는 키만 노출 (entities/character/lib/apply.ts 와 동기).
+// eyeIndex 는 JS_SetEye 가 없어 입력해도 무용이므로 제외.
 const NUMERIC_FIELDS: { key: keyof CharacterAppearance; label: string; max: number }[] = [
   { key: 'bodyIndex', label: '몸', max: 5 },
-  { key: 'eyeIndex', label: '눈', max: 10 },
   { key: 'hairIndex', label: '머리', max: 15 },
   { key: 'facehairIndex', label: '얼굴털', max: 10 },
   { key: 'clothIndex', label: '옷', max: 10 },
@@ -34,20 +35,22 @@ export function AppearanceEditor({
   characterId,
   appearance,
   colors,
+  onAppearanceChange,
+  onColorsChange,
 }: {
   characterId: string;
   appearance: CharacterAppearance;
   colors: CharacterColors;
+  onAppearanceChange: (next: CharacterAppearance) => void;
+  onColorsChange: (next: CharacterColors) => void;
 }) {
   const qc = useQueryClient();
-  const [draft, setDraft] = useState<CharacterAppearance>(appearance);
-  const [draftColors, setDraftColors] = useState<CharacterColors>(colors);
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
     setBusy(true);
     try {
-      await updateCharacter(characterId, { appearance: draft, colors: draftColors });
+      await updateCharacter(characterId, { appearance, colors });
       qc.invalidateQueries({ queryKey: ['character'] });
       toast.success('외형 저장됨');
     } finally {
@@ -66,8 +69,13 @@ export function AppearanceEditor({
                 type="number"
                 min={0}
                 max={f.max}
-                value={draft[f.key]}
-                onChange={(e) => setDraft({ ...draft, [f.key]: Math.max(0, Math.min(f.max, Number(e.target.value || 0))) })}
+                value={appearance[f.key]}
+                onChange={(e) =>
+                  onAppearanceChange({
+                    ...appearance,
+                    [f.key]: Math.max(0, Math.min(f.max, Number(e.target.value || 0))),
+                  })
+                }
               />
             </div>
           ))}
@@ -79,13 +87,13 @@ export function AppearanceEditor({
               <div className="flex items-center gap-2 mt-1">
                 <input
                   type="color"
-                  value={draftColors[f.key]}
-                  onChange={(e) => setDraftColors({ ...draftColors, [f.key]: e.target.value })}
+                  value={colors[f.key]}
+                  onChange={(e) => onColorsChange({ ...colors, [f.key]: e.target.value })}
                   className="h-9 w-12 rounded border bg-background"
                 />
                 <Input
-                  value={draftColors[f.key]}
-                  onChange={(e) => setDraftColors({ ...draftColors, [f.key]: e.target.value })}
+                  value={colors[f.key]}
+                  onChange={(e) => onColorsChange({ ...colors, [f.key]: e.target.value })}
                   className="font-mono"
                 />
               </div>

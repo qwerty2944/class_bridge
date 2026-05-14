@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Copy, MoreVertical, RefreshCw, Trash2, UserPlus } from 'lucide-react';
+import { Copy, MoreVertical, RefreshCw, Trash2, UserPlus, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -36,6 +36,7 @@ import {
   removeTenantMember,
 } from '@/entities/tenant';
 import { searchProfiles } from '@/entities/user';
+import { ParentChildrenDialog } from '@/features/parent-link-manage';
 import { ROLE_LABEL } from '@/shared/types/database';
 import type { Role, Profile } from '@/shared/types/database';
 
@@ -146,6 +147,18 @@ export function MembersClient() {
                         </p>
                       </div>
                       <Badge variant="secondary">{ROLE_LABEL[m.role]}</Badge>
+                      {m.role === 'parent' && tenantId && m.profile && (
+                        <ParentChildrenDialog
+                          tenantId={tenantId}
+                          parentUserId={m.user_id}
+                          parentName={m.profile.full_name ?? m.profile.email ?? '학부모'}
+                          trigger={
+                            <Button size="icon" variant="ghost" title="자녀 관리">
+                              <Users className="h-4 w-4" />
+                            </Button>
+                          }
+                        />
+                      )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button size="icon" variant="ghost">
