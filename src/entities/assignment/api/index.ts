@@ -2,7 +2,7 @@
 
 import { createClient } from '@/shared/api/supabase/client';
 import type { Assignment, AssignmentSubmission } from '@/shared/types/database';
-import type { AssignmentWithSubject, SubmissionWithStudent } from '../model/types';
+import type { AssignmentWithRefs, AssignmentWithSubject, SubmissionWithStudent } from '../model/types';
 
 const sb = () => createClient();
 
@@ -14,6 +14,18 @@ export async function fetchAssignments(orgId: string): Promise<AssignmentWithSub
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as AssignmentWithSubject[];
+}
+
+// 여러 반의 과제를 한 번에 조회 (과제 화면 카드+필터용).
+export async function fetchAssignmentsByOrgs(orgIds: string[]): Promise<AssignmentWithRefs[]> {
+  if (!orgIds.length) return [];
+  const { data, error } = await sb()
+    .from('assignments')
+    .select('*, subject:subjects(*), organization:organizations(*)')
+    .in('organization_id', orgIds)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as AssignmentWithRefs[];
 }
 
 export async function fetchAssignment(id: string): Promise<AssignmentWithSubject | null> {
