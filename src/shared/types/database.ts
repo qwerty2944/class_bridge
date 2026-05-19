@@ -94,6 +94,7 @@ export interface ClassSession {
   topic: string | null;
   content_md: string | null;
   homework_md: string | null;
+  share_token: string | null;
   created_at: string;
 }
 

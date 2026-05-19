@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, Clock, X, CalendarDays, Pencil } from 'lucide-react';
+import { ArrowLeft, Check, Clock, X, CalendarDays, Pencil, Share2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
@@ -23,6 +23,7 @@ import {
   DialogTrigger,
 } from '@/shared/ui/dialog';
 import {
+  ensureClassShareToken,
   fetchAttendances,
   fetchClassSession,
   updateAttendance,
@@ -76,7 +77,12 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                 {s.teacher && ` · ${s.teacher.full_name} 선생님`}
               </CardDescription>
             </div>
-            {canEdit && <EditSessionDialog session={s} />}
+            {canEdit && (
+              <div className="flex gap-2 shrink-0">
+                <ShareSessionButton session={s} />
+                <EditSessionDialog session={s} />
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent className="grid md:grid-cols-2 gap-4">
@@ -145,6 +151,32 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function ShareSessionButton({ session }: { session: SessionWithRefs }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
+  const share = async () => {
+    setBusy(true);
+    try {
+      const token = await ensureClassShareToken(session);
+      const url = `${window.location.origin}/share/class/${token}`;
+      await navigator.clipboard.writeText(url);
+      qc.invalidateQueries({ queryKey: ['session', session.id] });
+      toast.success('공유 링크가 복사되었습니다. 학부모에게 보내세요.');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" className="gap-1 shrink-0" onClick={share} disabled={busy}>
+      <Share2 className="h-3.5 w-3.5" /> 공유
+    </Button>
   );
 }
 

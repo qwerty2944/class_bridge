@@ -64,6 +64,18 @@ export async function deleteClassSession(id: string) {
   if (error) throw error;
 }
 
+// 수업 공유 토큰 보장 — 없으면 생성해 저장하고, 토큰을 반환한다.
+export async function ensureClassShareToken(session: ClassSession): Promise<string> {
+  if (session.share_token) return session.share_token;
+  const token = crypto.randomUUID();
+  const { error } = await sb()
+    .from('class_sessions')
+    .update({ share_token: token })
+    .eq('id', session.id);
+  if (error) throw error;
+  return token;
+}
+
 export async function fetchAttendances(sessionId: string): Promise<AttendanceWithStudent[]> {
   const { data, error } = await sb()
     .from('attendances')
