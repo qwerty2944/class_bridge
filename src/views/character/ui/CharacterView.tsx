@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Coins, Sparkles, Trophy } from 'lucide-react';
@@ -20,7 +20,8 @@ import {
 } from '@/entities/character';
 import type { StudentCharacter, InventoryRow } from '@/entities/character';
 import { xpThresholdForLevel } from '@/entities/reward';
-import { UnityProviderClient, useUnity } from '@/shared/unity/provider';
+import { useUnity } from '@/shared/unity/provider';
+import { useUnityStore } from '@/shared/stores/unity-store';
 import { applyAppearance, applyAssetKey, applyColors } from '@/entities/character';
 import {
   CATEGORY_LABEL_KO,
@@ -121,11 +122,9 @@ function CharacterScene({
       <div className="grid lg:grid-cols-[1fr_360px] gap-6">
         <Card className="overflow-hidden">
           <CardContent className="p-0">
-            <div className="aspect-square w-full max-w-[520px] mx-auto">
-              <UnityProviderClient>
-                <UnityCharacterSync appearance={draftAppearance} colors={draftColors} inventory={inventory.filter((r) => r.equipped)} />
-              </UnityProviderClient>
-            </div>
+            <UnityAnchor>
+              <UnityCharacterSync appearance={draftAppearance} colors={draftColors} inventory={inventory.filter((r) => r.equipped)} />
+            </UnityAnchor>
             <div className="p-5 border-t">
               <p className="text-xs text-muted-foreground mb-1.5">
                 XP {character.xp} / {xpThresholdForLevel(character.level + 1)}
@@ -163,6 +162,46 @@ function CharacterScene({
           </Tabs>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 캐릭터 페이지의 유니티 위치 placeholder.
+ *
+ * 자기 영역(getBoundingClientRect)을 store 의 rect 로 게시하면 AppShell 의
+ * FloatingUnityHost 가 그 위에 position:fixed 로 캔버스를 올린다. 언마운트 시 rect=null
+ * 로 두면 호스트는 화면 밖으로 숨어 인스턴스만 유지한다.
+ */
+function UnityAnchor({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const request = useUnityStore((s) => s.request);
+  const setRect = useUnityStore((s) => s.setRect);
+
+  useEffect(() => {
+    request();
+    const el = ref.current;
+    if (!el) return;
+    const publish = () => {
+      const r = el.getBoundingClientRect();
+      setRect({ left: r.left, top: r.top, width: r.width, height: r.height });
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    window.addEventListener('scroll', publish, { passive: true, capture: true });
+    window.addEventListener('resize', publish);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('scroll', publish, { capture: true } as EventListenerOptions);
+      window.removeEventListener('resize', publish);
+      setRect(null);
+    };
+  }, [request, setRect]);
+
+  return (
+    <div ref={ref} className="aspect-square w-full max-w-[520px] mx-auto">
+      {children}
     </div>
   );
 }

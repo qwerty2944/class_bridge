@@ -35,6 +35,8 @@ import { useTenantStore } from '@/shared/stores/tenant-store';
 import { createClient } from '@/shared/api/supabase/client';
 import { AssignmentToastListener } from '@/features/assignment-realtime';
 import { JoinRequestToastListener } from '@/features/join-request-realtime';
+import { FloatingUnityHost } from '@/shared/unity/floating-host';
+import { useUnityStore } from '@/shared/stores/unity-store';
 import type { SessionContext } from '@/shared/auth/server';
 import type { Role } from '@/shared/types/database';
 import { ROLE_LABEL } from '@/shared/types/database';
@@ -71,6 +73,7 @@ export function AppShell({ ctx, children }: { ctx: SessionContext; children: Rea
   const router = useRouter();
   const supabase = createClient();
   const { currentTenantId, setTenant } = useTenantStore();
+  const unityRequested = useUnityStore((s) => s.requested);
 
   // 첫 진입 시 자동 선택
   useEffect(() => {
@@ -214,6 +217,7 @@ export function AppShell({ ctx, children }: { ctx: SessionContext; children: Rea
 
       <AssignmentToastListener />
       <JoinRequestToastListener />
+      {unityRequested && <FloatingUnityHost />}
     </div>
   );
 }
