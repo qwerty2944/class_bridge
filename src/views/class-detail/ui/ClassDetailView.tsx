@@ -287,7 +287,13 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
             onValueChange={(v) => setForm({ ...form, subject_id: v === '__none' ? null : v })}
           >
             <SelectTrigger>
-              <SelectValue placeholder="선택" />
+              <SelectValue placeholder="선택">
+                {(value) => {
+                  const v = String(value ?? '');
+                  if (!v || v === '__none') return '미지정';
+                  return subjectsQ.data?.find((s) => s.id === v)?.name ?? '미지정';
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none">미지정</SelectItem>
