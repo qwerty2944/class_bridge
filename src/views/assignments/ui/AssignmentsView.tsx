@@ -100,6 +100,7 @@ function NewAssignmentDialog({ orgId }: { orgId: string }) {
     description_md: '',
     due_at: '',
     subject_id: null as string | null,
+    xp_reward: '',
   });
   const [busy, setBusy] = useState(false);
 
@@ -113,12 +114,13 @@ function NewAssignmentDialog({ orgId }: { orgId: string }) {
         description_md: form.description_md || null,
         due_at: form.due_at ? new Date(form.due_at).toISOString() : null,
         subject_id: form.subject_id,
+        xp_reward: form.xp_reward ? Math.max(0, Math.round(Number(form.xp_reward))) : 0,
         created_by: userId,
       });
       qc.invalidateQueries({ queryKey: ['assignments', orgId] });
       toast.success('과제 생성됨 (학생 제출 항목 생성)');
       setOpen(false);
-      setForm({ title: '', description_md: '', due_at: '', subject_id: null });
+      setForm({ title: '', description_md: '', due_at: '', subject_id: null, xp_reward: '' });
     } finally {
       setBusy(false);
     }
@@ -165,6 +167,19 @@ function NewAssignmentDialog({ orgId }: { orgId: string }) {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div>
+            <Label>완료 시 지급 경험치(XP)</Label>
+            <Input
+              type="number"
+              min={0}
+              value={form.xp_reward}
+              onChange={(e) => setForm({ ...form, xp_reward: e.target.value })}
+              placeholder="예: 100"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              채점되면 학생에게 이 경험치가 지급됩니다.
+            </p>
           </div>
         </div>
         <DialogFooter>

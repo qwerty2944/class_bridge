@@ -30,6 +30,7 @@ import {
   type SessionWithRefs,
 } from '@/entities/class-session';
 import { fetchSubjects } from '@/entities/subject';
+import { RichContent, RichTextEditor } from '@/features/rich-text-editor';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { ATTENDANCE_LABEL, type AttendanceStatus } from '@/shared/types/database';
 
@@ -81,7 +82,7 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
         <CardContent className="grid md:grid-cols-2 gap-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">수업 내용</p>
-            <p className="text-sm whitespace-pre-wrap">{s.content_md ?? '—'}</p>
+            <RichContent html={s.content_md} />
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">과제 메모</p>
@@ -268,10 +269,9 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
         </div>
         <div>
           <Label>수업 내용</Label>
-          <Textarea
-            rows={3}
+          <RichTextEditor
             value={form.content_md}
-            onChange={(e) => setForm({ ...form, content_md: e.target.value })}
+            onChange={(html) => setForm({ ...form, content_md: html })}
             placeholder="오늘 다룬 내용"
           />
         </div>

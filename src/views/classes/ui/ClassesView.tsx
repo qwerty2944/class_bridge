@@ -25,6 +25,7 @@ import { OrgPicker } from '@/features/org-pick';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { createClassSession, fetchClassSessions } from '@/entities/class-session';
 import { fetchSubjects } from '@/entities/subject';
+import { RichTextEditor } from '@/features/rich-text-editor';
 
 export function ClassesClient({ initialOrgId }: { initialOrgId: string | null }) {
   const { tenantId, has, userId } = useCurrentTenant();
@@ -184,7 +185,11 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
           </div>
           <div>
             <Label>수업 내용</Label>
-            <Textarea rows={3} value={form.content_md} onChange={(e) => setForm({ ...form, content_md: e.target.value })} placeholder="오늘 다룬 내용" />
+            <RichTextEditor
+              value={form.content_md}
+              onChange={(html) => setForm({ ...form, content_md: html })}
+              placeholder="오늘 다룬 내용"
+            />
           </div>
           <div>
             <Label>과제(메모)</Label>

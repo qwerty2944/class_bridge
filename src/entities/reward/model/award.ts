@@ -20,8 +20,7 @@ export async function awardForGrade(args: {
   studentFullName?: string | null;
   submissionId: string;
   score: number;
-  dueAt: string | null;
-  submittedAt: string | null;
+  xpReward: number;
 }): Promise<RewardResult | null> {
   if (args.score == null || isNaN(args.score)) return null;
 
@@ -31,9 +30,8 @@ export async function awardForGrade(args: {
     fullName: args.studentFullName,
   });
 
-  const beforeDeadline =
-    args.dueAt && args.submittedAt ? new Date(args.submittedAt) <= new Date(args.dueAt) : false;
-  const xpEarned = Math.max(0, Math.round(args.score * 0.5) + (beforeDeadline ? 10 : 0));
+  // XP는 과제에 설정된 값(선생님이 정한 값)을 그대로 지급. 코인은 점수 기반 유지.
+  const xpEarned = Math.max(0, Math.round(args.xpReward));
   const coinEarned = Math.max(0, Math.round(args.score * 0.2));
 
   const { data: existing } = await sb()

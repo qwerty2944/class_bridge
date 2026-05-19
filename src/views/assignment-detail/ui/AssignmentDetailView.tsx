@@ -19,18 +19,28 @@ import {
   fetchSubmissions,
   gradeSubmission,
   submitAssignment,
+  updateAssignment,
 } from '@/entities/assignment';
 import { awardForGrade } from '@/entities/reward';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { SUBMISSION_LABEL } from '@/shared/types/database';
 
 export function AssignmentDetailClient({ assignmentId }: { assignmentId: string }) {
-  const { has, userId } = useCurrentTenant();
+  const { has, userId, tenantId } = useCurrentTenant();
   const isStudent = has('student') && !has('teacher') && !has('director');
   const canGrade = has('director') || has('teacher');
+  const qc = useQueryClient();
 
   const aQ = useQuery({ queryKey: ['assignment', assignmentId], queryFn: () => fetchAssignment(assignmentId) });
-  const { tenantId } = useCurrentTenant();
+
+  const updateXp = useMutation({
+    mutationFn: (xp: number) => updateAssignment(assignmentId, { xp_reward: xp }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['assignment', assignmentId] });
+      toast.success('지급 경험치가 저장되었습니다.');
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   if (aQ.isLoading || !aQ.data) return <Skeleton className="h-40" />;
   const a = aQ.data;
@@ -48,6 +58,7 @@ export function AssignmentDetailClient({ assignmentId }: { assignmentId: string 
             <ClipboardList className="h-5 w-5 text-muted-foreground" />
             <CardTitle>{a.title}</CardTitle>
             {a.subject && <Badge variant="secondary">{a.subject.name}</Badge>}
+            <Badge variant="outline">{a.xp_reward} XP</Badge>
           </div>
           <CardDescription className="flex items-center gap-2">
             {a.due_at && (
@@ -57,13 +68,30 @@ export function AssignmentDetailClient({ assignmentId }: { assignmentId: string 
             )}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <p className="whitespace-pre-wrap text-sm">{a.description_md ?? '—'}</p>
+          {canGrade && (
+            <div className="flex items-center gap-2 border-t pt-3">
+              <Label className="text-xs whitespace-nowrap">완료 시 지급 경험치(XP)</Label>
+              <Input
+                type="number"
+                min={0}
+                className="h-8 w-24"
+                defaultValue={a.xp_reward}
+                onBlur={(e) => {
+                  const v = Math.max(0, Math.round(Number(e.target.value) || 0));
+                  if (v !== a.xp_reward) updateXp.mutate(v);
+                }}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {isStudent && userId && <StudentSubmit assignmentId={assignmentId} studentId={userId} />}
-      {canGrade && tenantId && <TeacherGrading assignmentId={assignmentId} tenantId={tenantId} dueAt={a.due_at} />}
+      {canGrade && tenantId && (
+        <TeacherGrading assignmentId={assignmentId} tenantId={tenantId} xpReward={a.xp_reward} />
+      )}
     </div>
   );
 }
@@ -138,11 +166,11 @@ function StudentSubmit({ assignmentId, studentId }: { assignmentId: string; stud
 function TeacherGrading({
   assignmentId,
   tenantId,
-  dueAt,
+  xpReward,
 }: {
   assignmentId: string;
   tenantId: string;
-  dueAt: string | null;
+  xpReward: number;
 }) {
   const qc = useQueryClient();
   const sQ = useQuery({
@@ -151,7 +179,7 @@ function TeacherGrading({
   });
 
   const handleGradeWithReward = async (
-    submission: { id: string; student_id: string; submitted_at: string | null; student?: { full_name?: string | null } },
+    submission: { id: string; student_id: string; student?: { full_name?: string | null } },
     score: number | null,
     feedback: string | null,
   ) => {
@@ -163,8 +191,7 @@ function TeacherGrading({
         studentFullName: submission.student?.full_name ?? null,
         submissionId: submission.id,
         score,
-        dueAt,
-        submittedAt: submission.submitted_at,
+        xpReward,
       });
       if (r && (r.xpAdded > 0 || r.coinsAdded > 0)) {
         toast.success(

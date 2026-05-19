@@ -113,6 +113,7 @@ export interface Assignment {
   title: string;
   description_md: string | null;
   due_at: string | null;
+  xp_reward: number;
   created_by: string | null;
   created_at: string;
 }
