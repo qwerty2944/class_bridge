@@ -12,7 +12,7 @@ export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 export type SubmissionStatus = 'pending' | 'submitted' | 'graded';
 export type PostCategory = 'notice' | 'free' | 'qna';
 export type Relation = 'father' | 'mother' | 'guardian';
-export type RewardSource = 'assignment_grade' | 'admin' | 'level_bonus';
+export type RewardSource = 'assignment_grade' | 'admin' | 'level_bonus' | 'homework_check';
 export type HandoverScope = 'organization' | 'student';
 export type JoinRequestRole = 'teacher' | 'student' | 'parent';
 export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
@@ -94,6 +94,7 @@ export interface ClassSession {
   topic: string | null;
   content_md: string | null;
   homework_md: string | null;
+  homework_xp: number;
   share_token: string | null;
   created_at: string;
 }
@@ -105,6 +106,7 @@ export interface Attendance {
   status: AttendanceStatus;
   check_in_at: string | null;
   note: string | null;
+  homework_done: boolean;
 }
 
 export interface Assignment {

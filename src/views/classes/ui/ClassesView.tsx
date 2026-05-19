@@ -109,6 +109,7 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
     subject_id: null as string | null,
     content_md: '',
     homework_md: '',
+    homework_xp: '',
   });
   const [busy, setBusy] = useState(false);
 
@@ -125,6 +126,7 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
         subject_id: form.subject_id,
         content_md: form.content_md || null,
         homework_md: form.homework_md || null,
+        homework_xp: form.homework_xp ? Math.max(0, Math.round(Number(form.homework_xp))) : 0,
         teacher_id: userId,
       });
       qc.invalidateQueries({ queryKey: ['class-sessions', orgId] });
@@ -200,6 +202,19 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
           <div>
             <Label>과제(메모)</Label>
             <Textarea rows={2} value={form.homework_md} onChange={(e) => setForm({ ...form, homework_md: e.target.value })} placeholder="다음 시간까지 할 일" />
+          </div>
+          <div>
+            <Label>과제 점검 XP</Label>
+            <Input
+              type="number"
+              min={0}
+              value={form.homework_xp}
+              onChange={(e) => setForm({ ...form, homework_xp: e.target.value })}
+              placeholder="예: 20"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              출결 화면에서 학생 과제를 체크하면 이 경험치가 지급됩니다.
+            </p>
           </div>
         </div>
         <DialogFooter>

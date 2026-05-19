@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
+import { Checkbox } from '@/shared/ui/checkbox';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import {
@@ -28,9 +29,11 @@ import {
   fetchClassSession,
   updateAttendance,
   updateClassSession,
+  type AttendanceWithStudent,
   type SessionWithRefs,
 } from '@/entities/class-session';
 import { fetchSubjects } from '@/entities/subject';
+import { awardForHomework } from '@/entities/reward';
 import { RichContent, RichTextEditor } from '@/features/rich-text-editor';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { ATTENDANCE_LABEL, type AttendanceStatus } from '@/shared/types/database';
@@ -38,7 +41,7 @@ import { ATTENDANCE_LABEL, type AttendanceStatus } from '@/shared/types/database
 const STATUSES: AttendanceStatus[] = ['present', 'late', 'absent', 'excused'];
 
 export function ClassDetailClient({ sessionId }: { sessionId: string }) {
-  const { has } = useCurrentTenant();
+  const { has, tenantId } = useCurrentTenant();
   const qc = useQueryClient();
   const sQ = useQuery({ queryKey: ['session', sessionId], queryFn: () => fetchClassSession(sessionId) });
   const aQ = useQuery({ queryKey: ['attendances', sessionId], queryFn: () => fetchAttendances(sessionId) });
@@ -47,6 +50,44 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateAttendance>[1] }) =>
       updateAttendance(id, patch),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['attendances', sessionId] }),
+  });
+
+  // 과제 점검 — 체크 저장 + 경험치 지급/회수.
+  const homework = useMutation({
+    mutationFn: async ({
+      attendance,
+      done,
+      xpReward,
+    }: {
+      attendance: AttendanceWithStudent;
+      done: boolean;
+      xpReward: number;
+    }) => {
+      await updateAttendance(attendance.id, { homework_done: done });
+      if (!tenantId) return null;
+      return awardForHomework({
+        tenantId,
+        studentUserId: attendance.student_id,
+        studentFullName: attendance.student?.full_name ?? null,
+        attendanceId: attendance.id,
+        xpReward,
+        done,
+      });
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['attendances', sessionId] });
+      qc.invalidateQueries({ queryKey: ['character'] });
+      if (r && r.xpAdded !== 0) {
+        toast.success(
+          r.leveledUp
+            ? `과제 점검! +${r.xpAdded} XP — Lv.${r.oldLevel}→Lv.${r.newLevel}`
+            : r.xpAdded > 0
+              ? `과제 점검 — +${r.xpAdded} XP`
+              : `과제 점검 취소 — ${r.xpAdded} XP`,
+        );
+      }
+    },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   if (sQ.isLoading || !sQ.data) return <Skeleton className="h-40" />;
@@ -99,8 +140,19 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>출결</CardTitle>
-          <CardDescription>{canEdit ? '학생별 출결을 체크/사유를 입력하세요.' : '내 출결 상태'}</CardDescription>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <CardTitle>출결 · 과제 점검</CardTitle>
+              <CardDescription>
+                {canEdit ? '출결 상태와 과제 수행을 체크하세요.' : '내 출결·과제 상태'}
+              </CardDescription>
+            </div>
+            {s.homework_xp > 0 && (
+              <Badge variant="secondary" className="shrink-0">
+                과제 점검 +{s.homework_xp} XP
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="divide-y">
           {aQ.isLoading ? (
@@ -119,6 +171,15 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                 </div>
                 {canEdit ? (
                   <div className="flex items-center gap-2">
+                    <label className="flex cursor-pointer items-center gap-1.5 text-xs whitespace-nowrap">
+                      <Checkbox
+                        checked={a.homework_done}
+                        onCheckedChange={(c) =>
+                          homework.mutate({ attendance: a, done: c === true, xpReward: s.homework_xp })
+                        }
+                      />
+                      과제
+                    </label>
                     <Select value={a.status} onValueChange={(v) => upd.mutate({ id: a.id, patch: { status: v as AttendanceStatus } })}>
                       <SelectTrigger className="w-[120px]">
                         <SelectValue />
@@ -143,7 +204,14 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                     />
                   </div>
                 ) : (
-                  <Badge variant={a.status === 'present' ? 'default' : 'secondary'}>{ATTENDANCE_LABEL[a.status]}</Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant={a.homework_done ? 'default' : 'outline'}>
+                      과제 {a.homework_done ? '완료' : '미완료'}
+                    </Badge>
+                    <Badge variant={a.status === 'present' ? 'default' : 'secondary'}>
+                      {ATTENDANCE_LABEL[a.status]}
+                    </Badge>
+                  </div>
                 )}
               </div>
             ))
@@ -213,6 +281,7 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
     subject_id: session.subject_id,
     content_md: session.content_md ?? '',
     homework_md: session.homework_md ?? '',
+    homework_xp: session.homework_xp ? String(session.homework_xp) : '',
   });
   const [busy, setBusy] = useState(false);
 
@@ -228,6 +297,7 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
         subject_id: form.subject_id,
         content_md: form.content_md || null,
         homework_md: form.homework_md || null,
+        homework_xp: form.homework_xp ? Math.max(0, Math.round(Number(form.homework_xp))) : 0,
       });
       qc.invalidateQueries({ queryKey: ['session', session.id] });
       qc.invalidateQueries({ queryKey: ['class-sessions', session.organization_id] });
@@ -321,6 +391,19 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
             onChange={(e) => setForm({ ...form, homework_md: e.target.value })}
             placeholder="다음 시간까지 할 일"
           />
+        </div>
+        <div>
+          <Label>과제 점검 XP</Label>
+          <Input
+            type="number"
+            min={0}
+            value={form.homework_xp}
+            onChange={(e) => setForm({ ...form, homework_xp: e.target.value })}
+            placeholder="예: 20"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            출결 화면에서 학생 과제를 체크하면 이 경험치가 지급됩니다.
+          </p>
         </div>
       </div>
       <DialogFooter>

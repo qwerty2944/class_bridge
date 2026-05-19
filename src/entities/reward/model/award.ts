@@ -91,3 +91,83 @@ export async function awardForGrade(args: {
 
   return { xpAdded: dXp, coinsAdded: dCoin + (leveledUp ? 50 * (newLevel - oldLevel) : 0), oldLevel, newLevel, leveledUp };
 }
+
+// 수업 과제 점검 보상 — 체크 시 수업에 지정된 XP 지급, 해제 시 회수.
+// source_ref 는 attendance.id (수업-학생 행) 이라 학생·수업당 1회만 지급된다.
+export async function awardForHomework(args: {
+  tenantId: string;
+  studentUserId: string;
+  studentFullName?: string | null;
+  attendanceId: string;
+  xpReward: number;
+  done: boolean;
+}): Promise<RewardResult | null> {
+  const character = await ensureCharacter({
+    tenantId: args.tenantId,
+    userId: args.studentUserId,
+    fullName: args.studentFullName,
+  });
+
+  const xpEarned = args.done ? Math.max(0, Math.round(args.xpReward)) : 0;
+
+  const { data: existing } = await sb()
+    .from('reward_events')
+    .select('*')
+    .eq('character_id', character.id)
+    .eq('source', 'homework_check')
+    .eq('source_ref', args.attendanceId)
+    .maybeSingle();
+
+  const prevXp = (existing as { xp_delta?: number } | null)?.xp_delta ?? 0;
+  const dXp = xpEarned - prevXp;
+
+  if (dXp === 0) {
+    return { xpAdded: 0, coinsAdded: 0, oldLevel: character.level, newLevel: character.level, leveledUp: false };
+  }
+
+  if (existing) {
+    await sb()
+      .from('reward_events')
+      .update({ xp_delta: xpEarned, note: '과제 점검' })
+      .eq('id', (existing as { id: string }).id);
+  } else {
+    await sb().from('reward_events').insert({
+      character_id: character.id,
+      source: 'homework_check',
+      source_ref: args.attendanceId,
+      xp_delta: xpEarned,
+      coin_delta: 0,
+      note: '과제 점검',
+    });
+  }
+
+  const newXp = Math.max(0, character.xp + dXp);
+  const oldLevel = character.level;
+  const newLevel = levelForXp(newXp);
+  const leveledUp = newLevel > oldLevel;
+  let newCoins = character.coins;
+  if (leveledUp) {
+    const bonus = 50 * (newLevel - oldLevel);
+    newCoins += bonus;
+    await sb().from('reward_events').insert({
+      character_id: character.id,
+      source: 'level_bonus',
+      xp_delta: 0,
+      coin_delta: bonus,
+      note: `Lv.${oldLevel} → Lv.${newLevel}`,
+    });
+  }
+
+  await sb()
+    .from('student_characters')
+    .update({ xp: newXp, coins: newCoins, level: newLevel, updated_at: new Date().toISOString() })
+    .eq('id', character.id);
+
+  return {
+    xpAdded: dXp,
+    coinsAdded: leveledUp ? 50 * (newLevel - oldLevel) : 0,
+    oldLevel,
+    newLevel,
+    leveledUp,
+  };
+}
