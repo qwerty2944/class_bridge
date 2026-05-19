@@ -27,11 +27,13 @@ import {
   ensureClassShareToken,
   fetchAttendances,
   fetchClassSession,
+  fetchClassSessions,
   updateAttendance,
   updateClassSession,
   type AttendanceWithStudent,
   type SessionWithRefs,
 } from '@/entities/class-session';
+import { syncHomeworkAssignment } from '@/entities/assignment';
 import { fetchSubjects } from '@/entities/subject';
 import { awardForHomework } from '@/entities/reward';
 import { RichContent, RichTextEditor } from '@/features/rich-text-editor';
@@ -39,6 +41,13 @@ import { useCurrentTenant } from '@/features/tenant-switch';
 import { ATTENDANCE_LABEL, type AttendanceStatus } from '@/shared/types/database';
 
 const STATUSES: AttendanceStatus[] = ['present', 'late', 'absent', 'excused'];
+
+// ISO 문자열 → <input type="datetime-local"> 용 로컬 시각 문자열.
+function toDateTimeLocal(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
 
 export function ClassDetailClient({ sessionId }: { sessionId: string }) {
   const { has, tenantId } = useCurrentTenant();
@@ -218,7 +227,124 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
           )}
         </CardContent>
       </Card>
+
+      {canEdit && tenantId && (
+        <PastHomeworkCheck orgId={s.organization_id} currentSessionId={sessionId} tenantId={tenantId} />
+      )}
     </div>
+  );
+}
+
+/** 지난 과제 점검 — 이전 수업의 과제를 불러와 학생별로 체크한다. */
+function PastHomeworkCheck({
+  orgId,
+  currentSessionId,
+  tenantId,
+}: {
+  orgId: string;
+  currentSessionId: string;
+  tenantId: string;
+}) {
+  const qc = useQueryClient();
+  const [picked, setPicked] = useState('');
+
+  const sessionsQ = useQuery({
+    queryKey: ['class-sessions', orgId],
+    queryFn: () => fetchClassSessions(orgId),
+  });
+  const others = (sessionsQ.data ?? []).filter((x) => x.id !== currentSessionId);
+  const selectedId = picked || others[0]?.id || '';
+  const selected = others.find((x) => x.id === selectedId) ?? null;
+
+  const aQ = useQuery({
+    queryKey: ['attendances', selectedId],
+    enabled: !!selectedId,
+    queryFn: () => fetchAttendances(selectedId),
+  });
+
+  const homework = useMutation({
+    mutationFn: async ({ attendance, done }: { attendance: AttendanceWithStudent; done: boolean }) => {
+      await updateAttendance(attendance.id, { homework_done: done });
+      return awardForHomework({
+        tenantId,
+        studentUserId: attendance.student_id,
+        studentFullName: attendance.student?.full_name ?? null,
+        attendanceId: attendance.id,
+        xpReward: selected?.homework_xp ?? 0,
+        done,
+      });
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['attendances', selectedId] });
+      qc.invalidateQueries({ queryKey: ['character'] });
+      if (r && r.xpAdded !== 0) {
+        toast.success(r.xpAdded > 0 ? `과제 점검 — +${r.xpAdded} XP` : `과제 점검 취소 — ${r.xpAdded} XP`);
+      }
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  if (!sessionsQ.isLoading && others.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>지난 과제 점검</CardTitle>
+        <CardDescription>이전 수업의 과제를 불러와 학생별로 점검합니다.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Select value={selectedId} onValueChange={(v) => v && setPicked(v)}>
+          <SelectTrigger>
+            <SelectValue>
+              {(value) => {
+                const x = others.find((o) => o.id === String(value ?? ''));
+                return x
+                  ? `${new Date(x.session_date).toLocaleDateString('ko-KR')} · ${x.topic ?? '수업'}`
+                  : '수업 선택';
+              }}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {others.map((x) => (
+              <SelectItem key={x.id} value={x.id}>
+                {new Date(x.session_date).toLocaleDateString('ko-KR')} · {x.topic ?? '수업'}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {selected && (
+          <p className="text-xs text-muted-foreground">
+            과제: {selected.homework_md ?? '—'}
+            {selected.homework_xp > 0 && ` · 점검 시 +${selected.homework_xp} XP`}
+          </p>
+        )}
+
+        <div className="divide-y">
+          {aQ.isLoading ? (
+            <Skeleton className="h-24" />
+          ) : (aQ.data ?? []).length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">학생이 없습니다.</p>
+          ) : (
+            aQ.data?.map((a) => (
+              <div key={a.id} className="flex items-center gap-3 py-2.5">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback>{a.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
+                </Avatar>
+                <p className="min-w-0 flex-1 truncate text-sm font-medium">{a.student?.full_name}</p>
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs whitespace-nowrap">
+                  <Checkbox
+                    checked={a.homework_done}
+                    onCheckedChange={(c) => homework.mutate({ attendance: a, done: c === true })}
+                  />
+                  과제 완료
+                </label>
+              </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -282,6 +408,7 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
     content_md: session.content_md ?? '',
     homework_md: session.homework_md ?? '',
     homework_xp: session.homework_xp ? String(session.homework_xp) : '',
+    homework_due_at: toDateTimeLocal(session.homework_due_at),
   });
   const [busy, setBusy] = useState(false);
 
@@ -289,6 +416,8 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
     if (!form.session_date) return;
     setBusy(true);
     try {
+      const hwXp = form.homework_xp ? Math.max(0, Math.round(Number(form.homework_xp))) : 0;
+      const hwDue = form.homework_due_at ? new Date(form.homework_due_at).toISOString() : null;
       await updateClassSession(session.id, {
         session_date: form.session_date,
         start_time: form.start_time || null,
@@ -297,7 +426,17 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
         subject_id: form.subject_id,
         content_md: form.content_md || null,
         homework_md: form.homework_md || null,
-        homework_xp: form.homework_xp ? Math.max(0, Math.round(Number(form.homework_xp))) : 0,
+        homework_xp: hwXp,
+        homework_due_at: hwDue,
+      });
+      await syncHomeworkAssignment({
+        sessionId: session.id,
+        organizationId: session.organization_id,
+        homeworkMd: form.homework_md || null,
+        homeworkDueAt: hwDue,
+        homeworkXp: hwXp,
+        subjectId: form.subject_id,
+        createdBy: session.teacher_id,
       });
       qc.invalidateQueries({ queryKey: ['session', session.id] });
       qc.invalidateQueries({ queryKey: ['class-sessions', session.organization_id] });
@@ -391,6 +530,17 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
             onChange={(e) => setForm({ ...form, homework_md: e.target.value })}
             placeholder="다음 시간까지 할 일"
           />
+        </div>
+        <div>
+          <Label>과제 마감일</Label>
+          <Input
+            type="datetime-local"
+            value={form.homework_due_at}
+            onChange={(e) => setForm({ ...form, homework_due_at: e.target.value })}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            과제 메모를 적으면 과제 목록에 자동으로 등록됩니다.
+          </p>
         </div>
         <div>
           <Label>과제 점검 XP</Label>

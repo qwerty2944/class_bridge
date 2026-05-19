@@ -60,6 +60,61 @@ export async function createAssignment(input: Partial<Assignment> & { organizati
   return data as Assignment;
 }
 
+// 수업 과제 메모를 과제 목록과 동기화 — source_session_id 로 연결된 과제를 생성/갱신/삭제.
+export async function syncHomeworkAssignment(input: {
+  sessionId: string;
+  organizationId: string;
+  homeworkMd: string | null;
+  homeworkDueAt: string | null;
+  homeworkXp: number;
+  subjectId: string | null;
+  createdBy: string | null;
+}): Promise<void> {
+  const client = sb();
+  const memo = (input.homeworkMd ?? '').trim();
+
+  const { data: existing } = await client
+    .from('assignments')
+    .select('id')
+    .eq('source_session_id', input.sessionId)
+    .maybeSingle();
+  const existingId = (existing as { id: string } | null)?.id;
+
+  // 과제 메모가 비면 연결된 과제 제거.
+  if (!memo) {
+    if (existingId) await client.from('assignments').delete().eq('id', existingId);
+    return;
+  }
+
+  const title = memo.split('\n')[0].slice(0, 80);
+
+  if (existingId) {
+    const { error } = await client
+      .from('assignments')
+      .update({
+        title,
+        description_md: memo,
+        due_at: input.homeworkDueAt,
+        xp_reward: input.homeworkXp,
+        subject_id: input.subjectId,
+      })
+      .eq('id', existingId);
+    if (error) throw error;
+    return;
+  }
+
+  await createAssignment({
+    organization_id: input.organizationId,
+    title,
+    description_md: memo,
+    due_at: input.homeworkDueAt,
+    xp_reward: input.homeworkXp,
+    subject_id: input.subjectId,
+    source_session_id: input.sessionId,
+    created_by: input.createdBy,
+  });
+}
+
 export async function updateAssignment(id: string, patch: Partial<Assignment>) {
   const { data, error } = await sb().from('assignments').update(patch).eq('id', id).select().single();
   if (error) throw error;

@@ -1,10 +1,10 @@
+import { cache } from 'react';
 import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 import { CalendarDays } from 'lucide-react';
 import { createClient } from '@/shared/api/supabase/server';
 import { RichContent } from '@/features/rich-text-editor';
 import type { ClassSession, Organization, Profile, Subject } from '@/shared/types/database';
-
-export const metadata = { title: '수업 공유 — Class Bridge' };
 
 type SharedSession = ClassSession & {
   subject: Subject | null;
@@ -12,13 +12,8 @@ type SharedSession = ClassSession & {
   organization: Organization | null;
 };
 
-/** 학부모용 공개 수업 열람 페이지. 로그인 없이 share_token 으로 접근. */
-export default async function SharedClassPage({
-  params,
-}: {
-  params: Promise<{ token: string }>;
-}) {
-  const { token } = await params;
+// generateMetadata + 페이지가 같은 요청 내에서 쿼리를 공유하도록 cache() 로 감쌈.
+const getSharedSession = cache(async (token: string): Promise<SharedSession | null> => {
   const supabase = await createClient();
   const { data } = await supabase
     .from('class_sessions')
@@ -27,9 +22,45 @@ export default async function SharedClassPage({
     )
     .eq('share_token', token)
     .maybeSingle();
+  return (data as SharedSession) ?? null;
+});
 
-  if (!data) notFound();
-  const s = data as SharedSession;
+// 카톡·슬랙 등 링크 미리보기용 OG 메타데이터 (SSR).
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}): Promise<Metadata> {
+  const { token } = await params;
+  const s = await getSharedSession(token);
+  if (!s) return { title: '수업 공유 — Class Bridge' };
+
+  const title = `${s.topic ?? '수업'}${s.organization?.name ? ` — ${s.organization.name}` : ''}`;
+  const description =
+    [
+      new Date(s.session_date).toLocaleDateString('ko-KR'),
+      s.teacher?.full_name ? `${s.teacher.full_name} 선생님` : null,
+      s.subject?.name ?? null,
+    ]
+      .filter(Boolean)
+      .join(' · ') + ' · 수업 내용 공유';
+
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: 'article' },
+  };
+}
+
+/** 학부모용 공개 수업 열람 페이지. 로그인 없이 share_token 으로 접근. */
+export default async function SharedClassPage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
+  const s = await getSharedSession(token);
+  if (!s) notFound();
 
   return (
     <main className="min-h-screen bg-muted/20 px-4 py-10">

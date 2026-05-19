@@ -24,6 +24,7 @@ import {
 import { OrgPicker } from '@/features/org-pick';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { createClassSession, fetchClassSessions } from '@/entities/class-session';
+import { syncHomeworkAssignment } from '@/entities/assignment';
 import { fetchSubjects } from '@/entities/subject';
 import { RichTextEditor } from '@/features/rich-text-editor';
 
@@ -110,6 +111,7 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
     content_md: '',
     homework_md: '',
     homework_xp: '',
+    homework_due_at: '',
   });
   const [busy, setBusy] = useState(false);
 
@@ -117,7 +119,9 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
     if (!form.session_date) return;
     setBusy(true);
     try {
-      await createClassSession({
+      const hwXp = form.homework_xp ? Math.max(0, Math.round(Number(form.homework_xp))) : 0;
+      const hwDue = form.homework_due_at ? new Date(form.homework_due_at).toISOString() : null;
+      const created = await createClassSession({
         organization_id: orgId,
         session_date: form.session_date,
         start_time: form.start_time || null,
@@ -126,8 +130,18 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
         subject_id: form.subject_id,
         content_md: form.content_md || null,
         homework_md: form.homework_md || null,
-        homework_xp: form.homework_xp ? Math.max(0, Math.round(Number(form.homework_xp))) : 0,
+        homework_xp: hwXp,
+        homework_due_at: hwDue,
         teacher_id: userId,
+      });
+      await syncHomeworkAssignment({
+        sessionId: created.id,
+        organizationId: orgId,
+        homeworkMd: form.homework_md || null,
+        homeworkDueAt: hwDue,
+        homeworkXp: hwXp,
+        subjectId: form.subject_id,
+        createdBy: userId,
       });
       qc.invalidateQueries({ queryKey: ['class-sessions', orgId] });
       toast.success('수업 생성됨 (학생 출결 자동 생성)');
@@ -202,6 +216,17 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
           <div>
             <Label>과제(메모)</Label>
             <Textarea rows={2} value={form.homework_md} onChange={(e) => setForm({ ...form, homework_md: e.target.value })} placeholder="다음 시간까지 할 일" />
+          </div>
+          <div>
+            <Label>과제 마감일</Label>
+            <Input
+              type="datetime-local"
+              value={form.homework_due_at}
+              onChange={(e) => setForm({ ...form, homework_due_at: e.target.value })}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              과제 메모를 적으면 과제 목록에 자동으로 등록됩니다.
+            </p>
           </div>
           <div>
             <Label>과제 점검 XP</Label>

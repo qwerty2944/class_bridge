@@ -95,6 +95,7 @@ export interface ClassSession {
   content_md: string | null;
   homework_md: string | null;
   homework_xp: number;
+  homework_due_at: string | null;
   share_token: string | null;
   created_at: string;
 }
@@ -117,6 +118,7 @@ export interface Assignment {
   description_md: string | null;
   due_at: string | null;
   xp_reward: number;
+  source_session_id: string | null;
   created_by: string | null;
   created_at: string;
 }
