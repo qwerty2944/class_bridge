@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# supabase CLI 로컬 캐시
+/supabase/.temp/
+
 # unity build artifacts — git에 포함 (Vercel git 연동 자동배포 위함)
 # /public/unity/*.data
 # /public/unity/*.wasm

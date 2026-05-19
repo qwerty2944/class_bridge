@@ -1,0 +1,15 @@
+# 정적 분석 설정. `flutter analyze` 로 검사.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  plugins:
+    - custom_lint
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+  errors:
+    invalid_annotation_target: ignore
+
+linter:
+  rules:
+    prefer_final_locals: true

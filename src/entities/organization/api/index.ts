@@ -1,7 +1,7 @@
 'use client';
 
 import { createClient } from '@/shared/api/supabase/client';
-import type { Organization, OrganizationMember, OrgRole } from '@/shared/types/database';
+import type { Organization, OrganizationMember, OrgRole, TeacherRole } from '@/shared/types/database';
 import type { OrgWithSubject, OrgMemberWithProfile } from '../model/types';
 
 const sb = () => createClient();
@@ -66,8 +66,25 @@ export async function fetchOrganizationMembers(orgId: string): Promise<OrgMember
   return (data ?? []) as OrgMemberWithProfile[];
 }
 
-export async function addOrgMember(args: { organization_id: string; user_id: string; role: OrgRole }) {
+export async function addOrgMember(args: {
+  organization_id: string;
+  user_id: string;
+  role: OrgRole;
+  teacher_role?: TeacherRole | null;
+}) {
   const { data, error } = await sb().from('organization_members').insert(args).select().single();
+  if (error) throw error;
+  return data as OrganizationMember;
+}
+
+// 담임 ↔ 부담임 등급 변경.
+export async function updateOrgMemberTeacherRole(id: string, teacher_role: TeacherRole) {
+  const { data, error } = await sb()
+    .from('organization_members')
+    .update({ teacher_role })
+    .eq('id', id)
+    .select()
+    .single();
   if (error) throw error;
   return data as OrganizationMember;
 }

@@ -26,13 +26,16 @@ import {
   fetchOrganization,
   fetchOrganizationMembers,
   removeOrgMember,
+  updateOrgMemberTeacherRole,
 } from '@/entities/organization';
 import { fetchTenantMembers } from '@/entities/tenant';
 import { useCurrentTenant } from '@/features/tenant-switch';
-import type { OrgRole } from '@/shared/types/database';
+import { ClassHandoverDialog } from '@/features/teacher-handover';
+import { TEACHER_ROLE_LABEL } from '@/shared/config/labels';
+import type { OrgRole, TeacherRole } from '@/shared/types/database';
 
 export function OrganizationDetailClient({ orgId }: { orgId: string }) {
-  const { tenantId, has } = useCurrentTenant();
+  const { userId, has } = useCurrentTenant();
   const qc = useQueryClient();
   const orgQ = useQuery({ queryKey: ['org', orgId], queryFn: () => fetchOrganization(orgId) });
   const membersQ = useQuery({
@@ -46,11 +49,24 @@ export function OrganizationDetailClient({ orgId }: { orgId: string }) {
       toast.success('제거됨');
     },
   });
+  const changeRole = useMutation({
+    mutationFn: ({ id, teacherRole }: { id: string; teacherRole: TeacherRole }) =>
+      updateOrgMemberTeacherRole(id, teacherRole),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['org-members', orgId] });
+      toast.success('등급 변경됨');
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   if (orgQ.isLoading || !orgQ.data) return <Skeleton className="h-40" />;
   const org = orgQ.data;
-  const teachers = (membersQ.data ?? []).filter((m) => m.role === 'teacher');
-  const students = (membersQ.data ?? []).filter((m) => m.role === 'student');
+  const members = membersQ.data ?? [];
+  const teachers = members.filter((m) => m.role === 'teacher');
+  const students = members.filter((m) => m.role === 'student');
+  // 이 반의 담임이거나 학원장이면 반 관리(인수인계·선생님 추가/제거) 가능. 부담임은 조회만.
+  const myOrgMember = members.find((m) => m.user_id === userId && m.role === 'teacher');
+  const canManageOrg = has('director') || myOrgMember?.teacher_role === 'homeroom';
 
   return (
     <div className="space-y-6">
@@ -94,14 +110,27 @@ export function OrganizationDetailClient({ orgId }: { orgId: string }) {
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" /> 선생님 ({teachers.length})
               </CardTitle>
-              <CardDescription>이 반을 담당하는 선생님</CardDescription>
+              <CardDescription>담임 · 부담임 (담임은 여러 명 가능)</CardDescription>
             </div>
-            {has('director') && <AddOrgMemberDialog orgId={orgId} role="teacher" />}
+            {canManageOrg && (
+              <div className="flex gap-1.5">
+                <ClassHandoverDialog orgId={orgId} orgName={org.name} />
+                <AddOrgMemberDialog orgId={orgId} role="teacher" />
+              </div>
+            )}
           </CardHeader>
           <CardContent className="space-y-1">
             {teachers.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">없음</p>}
             {teachers.map((m) => (
-              <MemberRow key={m.id} name={m.profile?.full_name} email={m.profile?.email} onRemove={() => has('director') && remove.mutate(m.id)} canRemove={has('director')} />
+              <TeacherRow
+                key={m.id}
+                name={m.profile?.full_name}
+                email={m.profile?.email}
+                teacherRole={m.teacher_role}
+                canManage={canManageOrg}
+                onChangeRole={(tr) => changeRole.mutate({ id: m.id, teacherRole: tr })}
+                onRemove={() => remove.mutate(m.id)}
+              />
             ))}
           </CardContent>
         </Card>
@@ -152,12 +181,61 @@ function MemberRow({ name, email, onRemove, canRemove }: { name?: string | null;
   );
 }
 
+function TeacherRow({
+  name,
+  email,
+  teacherRole,
+  canManage,
+  onChangeRole,
+  onRemove,
+}: {
+  name?: string | null;
+  email?: string | null;
+  teacherRole: TeacherRole | null;
+  canManage: boolean;
+  onChangeRole: (tr: TeacherRole) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 p-2 rounded-md hover:bg-accent">
+      <Avatar className="h-8 w-8">
+        <AvatarFallback>{name?.slice(0, 1) ?? '?'}</AvatarFallback>
+      </Avatar>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{name ?? '—'}</p>
+        <p className="text-xs text-muted-foreground truncate">{email}</p>
+      </div>
+      {canManage ? (
+        <Select value={teacherRole ?? 'homeroom'} onValueChange={(v) => onChangeRole(v as TeacherRole)}>
+          <SelectTrigger className="h-7 w-[84px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="homeroom">담임</SelectItem>
+            <SelectItem value="assistant">부담임</SelectItem>
+          </SelectContent>
+        </Select>
+      ) : (
+        <Badge variant={teacherRole === 'assistant' ? 'outline' : 'secondary'}>
+          {TEACHER_ROLE_LABEL[teacherRole ?? 'homeroom']}
+        </Badge>
+      )}
+      {canManage && (
+        <Button size="icon" variant="ghost" onClick={onRemove}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function AddOrgMemberDialog({ orgId, role }: { orgId: string; role: OrgRole }) {
   const { tenantId } = useCurrentTenant();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
+  const [teacherRole, setTeacherRole] = useState<TeacherRole>('homeroom');
   const candidatesQ = useQuery({
     queryKey: ['members', tenantId],
     enabled: !!tenantId && open,
@@ -171,7 +249,12 @@ function AddOrgMemberDialog({ orgId, role }: { orgId: string; role: OrgRole }) {
     if (!picked) return;
     setBusy(true);
     try {
-      await addOrgMember({ organization_id: orgId, user_id: picked, role });
+      await addOrgMember({
+        organization_id: orgId,
+        user_id: picked,
+        role,
+        teacher_role: role === 'teacher' ? teacherRole : null,
+      });
       qc.invalidateQueries({ queryKey: ['org-members', orgId] });
       toast.success('추가됨');
       setOpen(false);
@@ -211,6 +294,20 @@ function AddOrgMemberDialog({ orgId, role }: { orgId: string; role: OrgRole }) {
               ))}
             </SelectContent>
           </Select>
+          {role === 'teacher' && (
+            <>
+              <Label>등급</Label>
+              <Select value={teacherRole} onValueChange={(v) => setTeacherRole(v as TeacherRole)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="homeroom">담임</SelectItem>
+                  <SelectItem value="assistant">부담임</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
+          )}
         </div>
         <DialogFooter>
           <Button onClick={submit} disabled={busy || !picked}>

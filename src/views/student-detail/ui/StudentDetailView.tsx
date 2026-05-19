@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { ArrowLeft, CalendarDays, ClipboardList, Sparkles, TrendingUp } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ClipboardList, History, Sparkles, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Skeleton } from '@/shared/ui/skeleton';
@@ -16,14 +16,16 @@ import type { AssignmentWithSubject } from '@/entities/assignment';
 import { fetchProgress } from '@/entities/progress';
 import { fetchAttendancesByStudent } from '@/entities/class-session';
 import { CharacterView } from '@/views/character';
+import { HandoverHistory, StudentHandoverDialog } from '@/features/teacher-handover';
 import { ATTENDANCE_LABEL, SUBMISSION_LABEL } from '@/shared/config/labels';
 import type { AssignmentSubmission, SubmissionStatus } from '@/shared/types/database';
 
 type StudentAssignmentRow = AssignmentWithSubject & { mySubmission: AssignmentSubmission | null };
 
 export function StudentDetailView({ studentId }: { studentId: string }) {
-  const { tenantId, userId, loading: tenantLoading } = useCurrentTenant();
+  const { tenantId, userId, has, loading: tenantLoading } = useCurrentTenant();
   const isSelf = userId === studentId;
+  const canHandover = has('teacher') || has('director');
 
   const profileQ = useQuery({
     queryKey: ['profile', studentId],
@@ -82,7 +84,7 @@ export function StudentDetailView({ studentId }: { studentId: string }) {
       </header>
 
       <Tabs defaultValue="character">
-        <TabsList className="grid grid-cols-4 w-full max-w-xl">
+        <TabsList className="grid grid-cols-5 w-full max-w-2xl">
           <TabsTrigger value="character" className="gap-1">
             <Sparkles className="h-3.5 w-3.5" /> 캐릭터
           </TabsTrigger>
@@ -94,6 +96,9 @@ export function StudentDetailView({ studentId }: { studentId: string }) {
           </TabsTrigger>
           <TabsTrigger value="progress" className="gap-1">
             <TrendingUp className="h-3.5 w-3.5" /> 진도
+          </TabsTrigger>
+          <TabsTrigger value="handover" className="gap-1">
+            <History className="h-3.5 w-3.5" /> 인수인계
           </TabsTrigger>
         </TabsList>
 
@@ -111,6 +116,15 @@ export function StudentDetailView({ studentId }: { studentId: string }) {
 
         <TabsContent value="progress" className="mt-4">
           <ProgressTab orgIds={orgIds} />
+        </TabsContent>
+
+        <TabsContent value="handover" className="mt-4 space-y-3">
+          {canHandover && (
+            <div className="flex justify-end">
+              <StudentHandoverDialog studentId={studentId} studentName={profile.full_name ?? '학생'} />
+            </div>
+          )}
+          <HandoverHistory studentId={studentId} orgIds={orgIds} />
         </TabsContent>
       </Tabs>
     </div>

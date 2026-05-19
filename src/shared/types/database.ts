@@ -5,6 +5,7 @@ import type { CharacterAppearance, CharacterColors, ShopCategory } from '@/share
 
 export type Role = 'director' | 'teacher' | 'student' | 'parent';
 export type OrgRole = 'teacher' | 'student';
+export type TeacherRole = 'homeroom' | 'assistant';
 export type MemberStatus = 'active' | 'invited' | 'left';
 export type TenantType = 'academy' | 'tutor';
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
@@ -12,6 +13,9 @@ export type SubmissionStatus = 'pending' | 'submitted' | 'graded';
 export type PostCategory = 'notice' | 'free' | 'qna';
 export type Relation = 'father' | 'mother' | 'guardian';
 export type RewardSource = 'assignment_grade' | 'admin' | 'level_bonus';
+export type HandoverScope = 'organization' | 'student';
+export type JoinRequestRole = 'teacher' | 'student' | 'parent';
+export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
 
 export interface Tenant {
   id: string;
@@ -65,6 +69,8 @@ export interface OrganizationMember {
   organization_id: string;
   user_id: string;
   role: OrgRole;
+  // 선생님(role='teacher')일 때만 의미: 담임/부담임. 학생은 null.
+  teacher_role: TeacherRole | null;
   joined_at: string;
 }
 
@@ -204,6 +210,31 @@ export interface RewardEvent {
   created_at: string;
 }
 
+export interface TeacherHandover {
+  id: string;
+  tenant_id: string;
+  scope: HandoverScope;
+  organization_id: string | null;
+  student_id: string | null;
+  from_teacher_id: string | null;
+  to_teacher_id: string;
+  memo: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface TenantJoinRequest {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  requested_role: JoinRequestRole;
+  status: JoinRequestStatus;
+  message: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  created_at: string;
+}
+
 // Supabase Database 타입 (간단형) — supabase-js 제네릭에 넘기기 좋게.
 export type Database = {
   public: {
@@ -281,6 +312,17 @@ export type Database = {
         Row: RewardEvent;
         Insert: Partial<RewardEvent> & Pick<RewardEvent, 'character_id' | 'source'>;
         Update: Partial<RewardEvent>;
+      };
+      teacher_handovers: {
+        Row: TeacherHandover;
+        Insert: Partial<TeacherHandover> & Pick<TeacherHandover, 'tenant_id' | 'scope' | 'to_teacher_id'>;
+        Update: Partial<TeacherHandover>;
+      };
+      tenant_join_requests: {
+        Row: TenantJoinRequest;
+        Insert: Partial<TenantJoinRequest> &
+          Pick<TenantJoinRequest, 'tenant_id' | 'user_id' | 'requested_role'>;
+        Update: Partial<TenantJoinRequest>;
       };
     };
   };

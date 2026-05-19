@@ -4,15 +4,32 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, Clock, X, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Check, Clock, X, CalendarDays, Pencil } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Input } from '@/shared/ui/input';
+import { Label } from '@/shared/ui/label';
+import { Textarea } from '@/shared/ui/textarea';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
-import { fetchAttendances, fetchClassSession, updateAttendance } from '@/entities/class-session';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/shared/ui/dialog';
+import {
+  fetchAttendances,
+  fetchClassSession,
+  updateAttendance,
+  updateClassSession,
+  type SessionWithRefs,
+} from '@/entities/class-session';
+import { fetchSubjects } from '@/entities/subject';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { ATTENDANCE_LABEL, type AttendanceStatus } from '@/shared/types/database';
 
@@ -44,17 +61,22 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <CalendarDays className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>{s.topic ?? '제목 없음'}</CardTitle>
-            {s.subject && <Badge variant="secondary">{s.subject.name}</Badge>}
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5 text-muted-foreground" />
+                <CardTitle>{s.topic ?? '제목 없음'}</CardTitle>
+                {s.subject && <Badge variant="secondary">{s.subject.name}</Badge>}
+              </div>
+              <CardDescription className="mt-1">
+                {new Date(s.session_date).toLocaleDateString('ko-KR')}{' '}
+                {s.start_time && `${s.start_time.slice(0, 5)}`}
+                {s.end_time && ` ~ ${s.end_time.slice(0, 5)}`}
+                {s.teacher && ` · ${s.teacher.full_name} 선생님`}
+              </CardDescription>
+            </div>
+            {canEdit && <EditSessionDialog session={s} />}
           </div>
-          <CardDescription>
-            {new Date(s.session_date).toLocaleDateString('ko-KR')}{' '}
-            {s.start_time && `${s.start_time.slice(0, 5)}`}
-            {s.end_time && ` ~ ${s.end_time.slice(0, 5)}`}
-            {s.teacher && ` · ${s.teacher.full_name} 선생님`}
-          </CardDescription>
         </CardHeader>
         <CardContent className="grid md:grid-cols-2 gap-4">
           <div>
@@ -122,5 +144,152 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function EditSessionDialog({ session }: { session: SessionWithRefs }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1 shrink-0">
+          <Pencil className="h-3.5 w-3.5" /> 수정
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        {/* open 시 폼을 새로 마운트해 항상 최신 수업 데이터로 초기화 */}
+        {open && <EditSessionForm session={session} onDone={() => setOpen(false)} />}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone: () => void }) {
+  const { tenantId } = useCurrentTenant();
+  const qc = useQueryClient();
+  const subjectsQ = useQuery({
+    queryKey: ['subjects', tenantId],
+    enabled: !!tenantId,
+    queryFn: () => fetchSubjects(tenantId!),
+  });
+  const [form, setForm] = useState({
+    session_date: session.session_date,
+    start_time: session.start_time ?? '',
+    end_time: session.end_time ?? '',
+    topic: session.topic ?? '',
+    subject_id: session.subject_id,
+    content_md: session.content_md ?? '',
+    homework_md: session.homework_md ?? '',
+  });
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!form.session_date) return;
+    setBusy(true);
+    try {
+      await updateClassSession(session.id, {
+        session_date: form.session_date,
+        start_time: form.start_time || null,
+        end_time: form.end_time || null,
+        topic: form.topic || null,
+        subject_id: form.subject_id,
+        content_md: form.content_md || null,
+        homework_md: form.homework_md || null,
+      });
+      qc.invalidateQueries({ queryKey: ['session', session.id] });
+      qc.invalidateQueries({ queryKey: ['class-sessions', session.organization_id] });
+      toast.success('수업 수정됨');
+      onDone();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>수업 수정</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <Label>날짜</Label>
+            <Input
+              type="date"
+              value={form.session_date}
+              onChange={(e) => setForm({ ...form, session_date: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>시작</Label>
+            <Input
+              type="time"
+              value={form.start_time}
+              onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>종료</Label>
+            <Input
+              type="time"
+              value={form.end_time}
+              onChange={(e) => setForm({ ...form, end_time: e.target.value })}
+            />
+          </div>
+        </div>
+        <div>
+          <Label>주제</Label>
+          <Input
+            value={form.topic}
+            onChange={(e) => setForm({ ...form, topic: e.target.value })}
+            placeholder="예: 미분의 활용"
+          />
+        </div>
+        <div>
+          <Label>과목</Label>
+          <Select
+            value={form.subject_id ?? '__none'}
+            onValueChange={(v) => setForm({ ...form, subject_id: v === '__none' ? null : v })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="선택" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">미지정</SelectItem>
+              {subjectsQ.data?.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>수업 내용</Label>
+          <Textarea
+            rows={3}
+            value={form.content_md}
+            onChange={(e) => setForm({ ...form, content_md: e.target.value })}
+            placeholder="오늘 다룬 내용"
+          />
+        </div>
+        <div>
+          <Label>과제(메모)</Label>
+          <Textarea
+            rows={2}
+            value={form.homework_md}
+            onChange={(e) => setForm({ ...form, homework_md: e.target.value })}
+            placeholder="다음 시간까지 할 일"
+          />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button disabled={busy} onClick={submit}>
+          저장
+        </Button>
+      </DialogFooter>
+    </>
   );
 }

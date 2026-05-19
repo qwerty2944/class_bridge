@@ -23,6 +23,20 @@ export async function fetchTenantByInvite(code: string): Promise<Tenant | null> 
   return (data as Tenant) ?? null;
 }
 
+// 이름으로 학원 검색 — 검색 기반 가입 요청에서 사용.
+export async function searchTenants(query: string): Promise<Tenant[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const { data, error } = await sb()
+    .from('tenants')
+    .select('*')
+    .ilike('name', `%${trimmed}%`)
+    .order('name')
+    .limit(10);
+  if (error) throw error;
+  return (data ?? []) as Tenant[];
+}
+
 export async function addTenantMember(args: { tenantId: string; userId: string; role: Role }) {
   const { data, error } = await sb()
     .from('tenant_members')

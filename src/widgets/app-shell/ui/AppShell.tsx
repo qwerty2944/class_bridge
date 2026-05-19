@@ -30,8 +30,11 @@ import {
 } from '@/shared/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Separator } from '@/shared/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip';
 import { useTenantStore } from '@/shared/stores/tenant-store';
 import { createClient } from '@/shared/api/supabase/client';
+import { AssignmentToastListener } from '@/features/assignment-realtime';
+import { JoinRequestToastListener } from '@/features/join-request-realtime';
 import type { SessionContext } from '@/shared/auth/server';
 import type { Role } from '@/shared/types/database';
 import { ROLE_LABEL } from '@/shared/types/database';
@@ -141,9 +144,18 @@ export function AppShell({ ctx, children }: { ctx: SessionContext; children: Rea
                   </DropdownMenuItem>
                 ))}
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/setup">+ 학원 추가/합류</Link>
-              </DropdownMenuItem>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <DropdownMenuItem asChild>
+                      <Link href="/setup">+ 학원 추가 / 합류</Link>
+                    </DropdownMenuItem>
+                  }
+                />
+                <TooltipContent side="right">
+                  &lsquo;합류&rsquo;는 이미 운영 중인 다른 학원에 들어가는 것을 말해요.
+                </TooltipContent>
+              </Tooltip>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -199,6 +211,9 @@ export function AppShell({ ctx, children }: { ctx: SessionContext; children: Rea
       <main className="flex-1 overflow-x-hidden">
         <div className="mx-auto max-w-7xl px-4 md:px-8 py-6 md:py-10">{children}</div>
       </main>
+
+      <AssignmentToastListener />
+      <JoinRequestToastListener />
     </div>
   );
 }

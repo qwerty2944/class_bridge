@@ -1,2 +1,9 @@
 export * from './api';
-export type { Organization, OrganizationMember, OrgRole, OrgWithSubject, OrgMemberWithProfile } from './model/types';
+export type {
+  Organization,
+  OrganizationMember,
+  OrgRole,
+  TeacherRole,
+  OrgWithSubject,
+  OrgMemberWithProfile,
+} from './model/types';

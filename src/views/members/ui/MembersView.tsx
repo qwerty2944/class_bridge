@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Copy, MoreVertical, RefreshCw, Trash2, UserPlus, Users } from 'lucide-react';
+import { Check, Copy, MoreVertical, RefreshCw, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -36,6 +36,12 @@ import {
   removeTenantMember,
 } from '@/entities/tenant';
 import { searchProfiles } from '@/entities/user';
+import {
+  approveJoinRequest,
+  fetchPendingJoinRequests,
+  rejectJoinRequest,
+  type TenantJoinRequest,
+} from '@/entities/join-request';
 import { ParentChildrenDialog } from '@/features/parent-link-manage';
 import { ROLE_LABEL } from '@/shared/types/database';
 import type { Role, Profile } from '@/shared/types/database';
@@ -113,6 +119,8 @@ export function MembersClient() {
         </div>
       </header>
 
+      <JoinRequestsSection />
+
       <Tabs value={filter} onValueChange={(v) => setFilter(v as Role | 'all')}>
         <TabsList>
           <TabsTrigger value="all">전체 ({all.length})</TabsTrigger>
@@ -185,6 +193,86 @@ export function MembersClient() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+/** 학원장 — 검색으로 들어온 가입 요청 승인/거절. */
+function JoinRequestsSection() {
+  const { tenantId, userId } = useCurrentTenant();
+  const qc = useQueryClient();
+
+  const reqQ = useQuery({
+    queryKey: ['join-requests', tenantId],
+    enabled: !!tenantId,
+    queryFn: () => fetchPendingJoinRequests(tenantId!),
+  });
+
+  const approve = useMutation({
+    mutationFn: (request: TenantJoinRequest) => approveJoinRequest({ request, deciderId: userId! }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['join-requests', tenantId] });
+      qc.invalidateQueries({ queryKey: ['members', tenantId] });
+      toast.success('가입을 승인했습니다.');
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const reject = useMutation({
+    mutationFn: (id: string) => rejectJoinRequest(id, userId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['join-requests', tenantId] });
+      toast.success('가입 요청을 거절했습니다.');
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const requests = reqQ.data ?? [];
+  if (reqQ.isLoading || requests.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <UserPlus className="h-5 w-5" /> 가입 요청
+          <Badge variant="secondary">{requests.length}</Badge>
+        </CardTitle>
+        <CardDescription>학원 검색으로 들어온 가입 요청입니다. 승인하면 회원으로 추가됩니다.</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0 divide-y">
+        {requests.map((r) => (
+          <div key={r.id} className="flex items-center gap-3 p-4">
+            <Avatar className="h-9 w-9">
+              <AvatarFallback>{r.requester?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium truncate">
+                {r.requester?.full_name ?? '—'}{' '}
+                <span className="text-xs text-muted-foreground">{r.requester?.email}</span>
+              </p>
+              {r.message && <p className="text-xs text-muted-foreground truncate">“{r.message}”</p>}
+            </div>
+            <Badge variant="outline">{ROLE_LABEL[r.requested_role]}</Badge>
+            <Button
+              size="sm"
+              className="gap-1"
+              disabled={approve.isPending}
+              onClick={() => approve.mutate(r)}
+            >
+              <Check className="h-3.5 w-3.5" /> 승인
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1"
+              disabled={reject.isPending}
+              onClick={() => reject.mutate(r.id)}
+            >
+              <X className="h-3.5 w-3.5" /> 거절
+            </Button>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
