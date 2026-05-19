@@ -246,15 +246,15 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
         <DialogTitle>수업 수정</DialogTitle>
       </DialogHeader>
       <div className="space-y-3">
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <Label>날짜</Label>
-            <Input
-              type="date"
-              value={form.session_date}
-              onChange={(e) => setForm({ ...form, session_date: e.target.value })}
-            />
-          </div>
+        <div>
+          <Label>날짜</Label>
+          <Input
+            type="date"
+            value={form.session_date}
+            onChange={(e) => setForm({ ...form, session_date: e.target.value })}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>시작</Label>
             <Input
