@@ -12,6 +12,7 @@ import { Badge } from '@/shared/ui/badge';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
+import { Checkbox } from '@/shared/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import {
   Dialog,
@@ -24,7 +25,7 @@ import {
 import { OrgPicker } from '@/features/org-pick';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { createClassSession, fetchClassSessions } from '@/entities/class-session';
-import { syncHomeworkAssignment } from '@/entities/assignment';
+import { upsertSessionAssignment } from '@/entities/assignment';
 import { fetchSubjects } from '@/entities/subject';
 import { RichTextEditor } from '@/features/rich-text-editor';
 
@@ -109,9 +110,11 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
     topic: '',
     subject_id: null as string | null,
     content_md: '',
-    homework_md: '',
-    homework_xp: '',
-    homework_due_at: '',
+    add_homework: false,
+    hw_title: '',
+    hw_description: '',
+    hw_due_at: '',
+    hw_xp: '',
   });
   const [busy, setBusy] = useState(false);
 
@@ -119,8 +122,6 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
     if (!form.session_date) return;
     setBusy(true);
     try {
-      const hwXp = form.homework_xp ? Math.max(0, Math.round(Number(form.homework_xp))) : 0;
-      const hwDue = form.homework_due_at ? new Date(form.homework_due_at).toISOString() : null;
       const created = await createClassSession({
         organization_id: orgId,
         session_date: form.session_date,
@@ -129,22 +130,29 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
         topic: form.topic || null,
         subject_id: form.subject_id,
         content_md: form.content_md || null,
-        homework_md: form.homework_md || null,
-        homework_xp: hwXp,
-        homework_due_at: hwDue,
         teacher_id: userId,
       });
-      await syncHomeworkAssignment({
+      const wantHomework = form.add_homework && form.hw_title.trim().length > 0;
+      await upsertSessionAssignment({
         sessionId: created.id,
         organizationId: orgId,
-        homeworkMd: form.homework_md || null,
-        homeworkDueAt: hwDue,
-        homeworkXp: hwXp,
         subjectId: form.subject_id,
         createdBy: userId,
+        assignment: wantHomework
+          ? {
+              title: form.hw_title.trim(),
+              descriptionMd: form.hw_description.trim() || null,
+              dueAt: form.hw_due_at ? new Date(form.hw_due_at).toISOString() : null,
+              xpReward: form.hw_xp ? Math.max(0, Math.round(Number(form.hw_xp))) : 0,
+            }
+          : null,
       });
       qc.invalidateQueries({ queryKey: ['class-sessions', orgId] });
-      toast.success('수업 생성됨 (학생 출결 자동 생성)');
+      toast.success(
+        wantHomework
+          ? '수업 + 과제 생성됨 (학생 출결·제출 자동 생성)'
+          : '수업 생성됨 (학생 출결 자동 생성)',
+      );
       setOpen(false);
     } catch (e) {
       toast.error((e as Error).message);
@@ -213,33 +221,58 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
               placeholder="오늘 다룬 내용"
             />
           </div>
-          <div>
-            <Label>과제(메모)</Label>
-            <Textarea rows={2} value={form.homework_md} onChange={(e) => setForm({ ...form, homework_md: e.target.value })} placeholder="다음 시간까지 할 일" />
-          </div>
-          <div>
-            <Label>과제 마감일</Label>
-            <Input
-              type="datetime-local"
-              value={form.homework_due_at}
-              onChange={(e) => setForm({ ...form, homework_due_at: e.target.value })}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              과제 메모를 적으면 과제 목록에 자동으로 등록됩니다.
-            </p>
-          </div>
-          <div>
-            <Label>과제 점검 XP</Label>
-            <Input
-              type="number"
-              min={0}
-              value={form.homework_xp}
-              onChange={(e) => setForm({ ...form, homework_xp: e.target.value })}
-              placeholder="예: 20"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              출결 화면에서 학생 과제를 체크하면 이 경험치가 지급됩니다.
-            </p>
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+              <Checkbox
+                checked={form.add_homework}
+                onCheckedChange={(c) => setForm({ ...form, add_homework: c === true })}
+              />
+              이 수업에 과제 추가
+            </label>
+            {form.add_homework && (
+              <div className="space-y-3 pl-1">
+                <div>
+                  <Label>과제 제목</Label>
+                  <Input
+                    value={form.hw_title}
+                    onChange={(e) => setForm({ ...form, hw_title: e.target.value })}
+                    placeholder="예: 교재 p.120 ~ 122 문제 풀이"
+                  />
+                </div>
+                <div>
+                  <Label>과제 설명</Label>
+                  <Textarea
+                    rows={2}
+                    value={form.hw_description}
+                    onChange={(e) => setForm({ ...form, hw_description: e.target.value })}
+                    placeholder="자세한 안내 (선택)"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>마감일</Label>
+                    <Input
+                      type="datetime-local"
+                      value={form.hw_due_at}
+                      onChange={(e) => setForm({ ...form, hw_due_at: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>완료 시 XP</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={form.hw_xp}
+                      onChange={(e) => setForm({ ...form, hw_xp: e.target.value })}
+                      placeholder="예: 20"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  과제 목록에 자동 등록되고, 수업 상세에서 학생별로 점검할 수 있습니다.
+                </p>
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>

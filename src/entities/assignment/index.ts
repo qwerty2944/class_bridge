@@ -6,4 +6,5 @@ export type {
   AssignmentWithSubject,
   AssignmentWithRefs,
   SubmissionWithStudent,
+  SessionAssignment,
 } from './model/types';

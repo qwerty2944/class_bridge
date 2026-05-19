@@ -4,12 +4,19 @@ import type { Metadata } from 'next';
 import { CalendarDays } from 'lucide-react';
 import { createClient } from '@/shared/api/supabase/server';
 import { RichContent } from '@/features/rich-text-editor';
-import type { ClassSession, Organization, Profile, Subject } from '@/shared/types/database';
+import type {
+  Assignment,
+  ClassSession,
+  Organization,
+  Profile,
+  Subject,
+} from '@/shared/types/database';
 
 type SharedSession = ClassSession & {
   subject: Subject | null;
   teacher: Profile | null;
   organization: Organization | null;
+  assignments: Assignment[];
 };
 
 // generateMetadata + 페이지가 같은 요청 내에서 쿼리를 공유하도록 cache() 로 감쌈.
@@ -18,7 +25,7 @@ const getSharedSession = cache(async (token: string): Promise<SharedSession | nu
   const { data } = await supabase
     .from('class_sessions')
     .select(
-      '*, subject:subjects(*), teacher:profiles!class_sessions_teacher_id_fkey(*), organization:organizations(*)',
+      '*, subject:subjects(*), teacher:profiles!class_sessions_teacher_id_fkey(*), organization:organizations(*), assignments:assignments!assignments_source_session_id_fkey(*)',
     )
     .eq('share_token', token)
     .maybeSingle();
@@ -91,10 +98,20 @@ export default async function SharedClassPage({
           <RichContent html={s.content_md} />
         </section>
 
-        {s.homework_md && (
+        {s.assignments?.[0] && (
           <section className="rounded-xl border bg-card p-6 shadow-sm">
             <h2 className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">과제</h2>
-            <p className="whitespace-pre-wrap text-sm">{s.homework_md}</p>
+            <p className="text-sm font-medium">{s.assignments[0].title}</p>
+            {s.assignments[0].description_md && (
+              <p className="mt-1.5 whitespace-pre-wrap text-sm text-muted-foreground">
+                {s.assignments[0].description_md}
+              </p>
+            )}
+            {s.assignments[0].due_at && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                마감: {new Date(s.assignments[0].due_at).toLocaleString('ko-KR')}
+              </p>
+            )}
           </section>
         )}
 

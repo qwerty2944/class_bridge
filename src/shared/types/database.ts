@@ -93,9 +93,6 @@ export interface ClassSession {
   end_time: string | null;
   topic: string | null;
   content_md: string | null;
-  homework_md: string | null;
-  homework_xp: number;
-  homework_due_at: string | null;
   share_token: string | null;
   created_at: string;
 }
@@ -107,7 +104,6 @@ export interface Attendance {
   status: AttendanceStatus;
   check_in_at: string | null;
   note: string | null;
-  homework_done: boolean;
 }
 
 export interface Assignment {

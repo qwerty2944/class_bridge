@@ -1,8 +1,14 @@
 'use client';
 
 import { createClient } from '@/shared/api/supabase/client';
+import { awardForGrade } from '@/entities/reward';
 import type { Assignment, AssignmentSubmission } from '@/shared/types/database';
-import type { AssignmentWithRefs, AssignmentWithSubject, SubmissionWithStudent } from '../model/types';
+import type {
+  AssignmentWithRefs,
+  AssignmentWithSubject,
+  SessionAssignment,
+  SubmissionWithStudent,
+} from '../model/types';
 
 const sb = () => createClient();
 
@@ -60,19 +66,52 @@ export async function createAssignment(input: Partial<Assignment> & { organizati
   return data as Assignment;
 }
 
-// 수업 과제 메모를 과제 목록과 동기화 — source_session_id 로 연결된 과제를 생성/갱신/삭제.
-export async function syncHomeworkAssignment(input: {
+// 수업에 연결된 과제 + 학생 제출을 한 번에 가져온다.
+// 출결 카드 / 지난 과제 점검 카드 모두 이 결과를 공유.
+export async function fetchSessionAssignment(sessionId: string): Promise<SessionAssignment | null> {
+  const { data } = await sb()
+    .from('assignments')
+    .select('*, subject:subjects(*), submissions:assignment_submissions(*, student:profiles(*))')
+    .eq('source_session_id', sessionId)
+    .maybeSingle();
+  return (data as SessionAssignment) ?? null;
+}
+
+// 여러 수업에 연결된 과제 묶음 조회 (PastHomeworkCheck Select 옵션 필터링용).
+// session_id → assignment id 매핑.
+export async function fetchSessionAssignmentMap(
+  sessionIds: string[],
+): Promise<Record<string, string>> {
+  if (!sessionIds.length) return {};
+  const { data, error } = await sb()
+    .from('assignments')
+    .select('id, source_session_id')
+    .in('source_session_id', sessionIds);
+  if (error) throw error;
+  const map: Record<string, string> = {};
+  for (const row of (data ?? []) as { id: string; source_session_id: string }[]) {
+    map[row.source_session_id] = row.id;
+  }
+  return map;
+}
+
+// 수업 폼의 과제 섹션 저장 — source_session_id 로 연결된 과제를 생성/갱신/삭제.
+// assignment === null 이면 토글 OFF 로 해석해 연결 과제를 제거.
+export async function upsertSessionAssignment(input: {
   sessionId: string;
   organizationId: string;
-  homeworkMd: string | null;
-  homeworkDueAt: string | null;
-  homeworkXp: number;
   subjectId: string | null;
   createdBy: string | null;
+  assignment:
+    | {
+        title: string;
+        descriptionMd: string | null;
+        dueAt: string | null;
+        xpReward: number;
+      }
+    | null;
 }): Promise<void> {
   const client = sb();
-  const memo = (input.homeworkMd ?? '').trim();
-
   const { data: existing } = await client
     .from('assignments')
     .select('id')
@@ -80,22 +119,20 @@ export async function syncHomeworkAssignment(input: {
     .maybeSingle();
   const existingId = (existing as { id: string } | null)?.id;
 
-  // 과제 메모가 비면 연결된 과제 제거.
-  if (!memo) {
+  if (!input.assignment) {
     if (existingId) await client.from('assignments').delete().eq('id', existingId);
     return;
   }
 
-  const title = memo.split('\n')[0].slice(0, 80);
-
+  const a = input.assignment;
   if (existingId) {
     const { error } = await client
       .from('assignments')
       .update({
-        title,
-        description_md: memo,
-        due_at: input.homeworkDueAt,
-        xp_reward: input.homeworkXp,
+        title: a.title,
+        description_md: a.descriptionMd,
+        due_at: a.dueAt,
+        xp_reward: a.xpReward,
         subject_id: input.subjectId,
       })
       .eq('id', existingId);
@@ -105,13 +142,49 @@ export async function syncHomeworkAssignment(input: {
 
   await createAssignment({
     organization_id: input.organizationId,
-    title,
-    description_md: memo,
-    due_at: input.homeworkDueAt,
-    xp_reward: input.homeworkXp,
+    title: a.title,
+    description_md: a.descriptionMd,
+    due_at: a.dueAt,
+    xp_reward: a.xpReward,
     subject_id: input.subjectId,
     source_session_id: input.sessionId,
     created_by: input.createdBy,
+  });
+}
+
+// 과제 점검 토글 — 학생 제출 1건을 graded/pending 으로 전환하고 awardForGrade 로 XP 처리.
+// awardForGrade 가 source_ref=submissionId 로 idempotent 하므로 같은 토글을 여러 번
+// 눌러도 reward_events 가 중복되지 않는다. 회수 시 xpReward=0 으로 호출해 delta 적용.
+export async function setHomeworkChecked(args: {
+  submissionId: string;
+  tenantId: string;
+  studentUserId: string;
+  studentFullName?: string | null;
+  checked: boolean;
+  xpReward: number;
+}) {
+  const client = sb();
+  if (args.checked) {
+    const { error } = await client
+      .from('assignment_submissions')
+      .update({ status: 'graded' as const, submitted_at: new Date().toISOString() })
+      .eq('id', args.submissionId);
+    if (error) throw error;
+  } else {
+    const { error } = await client
+      .from('assignment_submissions')
+      .update({ status: 'pending' as const, submitted_at: null, score: null, feedback_md: null })
+      .eq('id', args.submissionId);
+    if (error) throw error;
+  }
+
+  return awardForGrade({
+    tenantId: args.tenantId,
+    studentUserId: args.studentUserId,
+    studentFullName: args.studentFullName,
+    submissionId: args.submissionId,
+    score: 0,
+    xpReward: args.checked ? args.xpReward : 0,
   });
 }
 
