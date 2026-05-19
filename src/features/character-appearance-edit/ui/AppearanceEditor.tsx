@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { updateCharacter } from '@/entities/character';
 import type { CharacterAppearance, CharacterColors } from '@/shared/unity/types';
 
@@ -65,18 +66,24 @@ export function AppearanceEditor({
           {NUMERIC_FIELDS.map((f) => (
             <div key={f.key}>
               <Label className="text-xs">{f.label}</Label>
-              <Input
-                type="number"
-                min={0}
-                max={f.max}
-                value={appearance[f.key]}
-                onChange={(e) =>
-                  onAppearanceChange({
-                    ...appearance,
-                    [f.key]: Math.max(0, Math.min(f.max, Number(e.target.value || 0))),
-                  })
-                }
-              />
+              <Select
+                value={String(appearance[f.key])}
+                onValueChange={(v) => {
+                  if (v == null) return;
+                  onAppearanceChange({ ...appearance, [f.key]: Number(v) });
+                }}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: f.max + 1 }, (_, i) => (
+                    <SelectItem key={i} value={String(i)}>
+                      {i + 1}번
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           ))}
         </div>
