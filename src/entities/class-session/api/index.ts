@@ -2,7 +2,12 @@
 
 import { createClient } from '@/shared/api/supabase/client';
 import type { Attendance, ClassSession } from '@/shared/types/database';
-import type { SessionWithRefs, AttendanceWithStudent, AttendanceWithSession } from '../model/types';
+import type {
+  SessionWithRefs,
+  SessionWithOrg,
+  AttendanceWithStudent,
+  AttendanceWithSession,
+} from '../model/types';
 
 const sb = () => createClient();
 
@@ -15,6 +20,21 @@ export async function fetchClassSessions(orgId: string): Promise<SessionWithRefs
     .order('start_time', { ascending: false });
   if (error) throw error;
   return (data ?? []) as SessionWithRefs[];
+}
+
+// 여러 반의 수업을 한 번에 조회 (수업 페이지의 카드 + 필터용).
+export async function fetchClassSessionsByOrgs(orgIds: string[]): Promise<SessionWithOrg[]> {
+  if (!orgIds.length) return [];
+  const { data, error } = await sb()
+    .from('class_sessions')
+    .select(
+      '*, subject:subjects(*), teacher:profiles!class_sessions_teacher_id_fkey(*), organization:organizations(*)',
+    )
+    .in('organization_id', orgIds)
+    .order('session_date', { ascending: false })
+    .order('start_time', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as SessionWithOrg[];
 }
 
 export async function fetchClassSession(id: string): Promise<SessionWithRefs | null> {

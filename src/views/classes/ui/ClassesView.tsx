@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { CalendarDays, Plus, Pencil } from 'lucide-react';
+import { CalendarDays, Plus } from 'lucide-react';
 import { Card, CardContent } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Skeleton } from '@/shared/ui/skeleton';
@@ -22,22 +22,44 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/shared/ui/dialog';
-import { OrgPicker } from '@/features/org-pick';
 import { useCurrentTenant } from '@/features/tenant-switch';
-import { createClassSession, fetchClassSessions } from '@/entities/class-session';
+import { createClassSession, fetchClassSessionsByOrgs } from '@/entities/class-session';
 import { upsertSessionAssignment } from '@/entities/assignment';
+import { fetchOrganizations, fetchOrganizationsForUser } from '@/entities/organization';
+import type { OrgWithSubject } from '@/entities/organization';
 import { fetchSubjects } from '@/entities/subject';
 import { RichTextEditor } from '@/features/rich-text-editor';
 
 export function ClassesClient({ initialOrgId }: { initialOrgId: string | null }) {
   const { tenantId, has, userId } = useCurrentTenant();
-  const [orgId, setOrgId] = useState<string | null>(initialOrgId);
+  const canCreate = has('director') || has('teacher');
 
-  const sessionsQ = useQuery({
-    queryKey: ['class-sessions', orgId],
-    enabled: !!orgId,
-    queryFn: () => fetchClassSessions(orgId!),
+  // 반 목록 — 원장은 학원 전체, 그 외는 소속 반.
+  const orgsQ = useQuery({
+    queryKey: ['orgs', tenantId, userId, has('director') ? 'all' : 'mine'],
+    enabled: !!tenantId && !!userId,
+    queryFn: () =>
+      has('director')
+        ? fetchOrganizations(tenantId!)
+        : fetchOrganizationsForUser(tenantId!, userId!),
   });
+  const orgs = useMemo(() => orgsQ.data ?? [], [orgsQ.data]);
+  const orgIds = useMemo(() => orgs.map((o) => o.id), [orgs]);
+
+  const sQ = useQuery({
+    queryKey: ['class-sessions-multi', orgIds.join(',')],
+    enabled: orgIds.length > 0,
+    queryFn: () => fetchClassSessionsByOrgs(orgIds),
+  });
+
+  const [orgFilter, setOrgFilter] = useState<string>(initialOrgId ?? 'all');
+
+  const filtered = (sQ.data ?? []).filter((s) => {
+    if (orgFilter !== 'all' && s.organization_id !== orgFilter) return false;
+    return true;
+  });
+
+  const loading = orgsQ.isLoading || (orgIds.length > 0 && sQ.isLoading);
 
   return (
     <div className="space-y-6">
@@ -46,47 +68,75 @@ export function ClassesClient({ initialOrgId }: { initialOrgId: string | null })
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">수업 기록</h1>
           <p className="text-sm text-muted-foreground">반별로 수업을 기록하고 출결을 체크합니다.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <OrgPicker value={orgId} onChange={setOrgId} />
-          {orgId && (has('director') || has('teacher')) && <NewSessionDialog orgId={orgId} userId={userId} />}
-        </div>
+        {canCreate && orgs.length > 0 && (
+          <NewSessionDialog
+            orgs={orgs}
+            defaultOrgId={orgFilter !== 'all' ? orgFilter : orgs[0].id}
+            userId={userId}
+          />
+        )}
       </header>
 
-      {!orgId ? (
+      {/* 필터 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={orgFilter} onValueChange={(v) => setOrgFilter(v ?? 'all')}>
+          <SelectTrigger className="w-44">
+            <SelectValue>
+              {(value) => {
+                const v = String(value ?? '');
+                if (!v || v === 'all') return '전체 반';
+                return orgs.find((o) => o.id === v)?.name ?? '전체 반';
+              }}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체 반</SelectItem>
+            {orgs.map((o) => (
+              <SelectItem key={o.id} value={o.id}>
+                {o.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {loading ? (
+        <Skeleton className="h-40" />
+      ) : orgs.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center text-sm text-muted-foreground">
-            반을 선택하세요.
+            소속된 반이 없습니다.
           </CardContent>
         </Card>
-      ) : sessionsQ.isLoading ? (
-        <Skeleton className="h-40" />
+      ) : filtered.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center text-sm text-muted-foreground">
+            조건에 맞는 수업이 없습니다.
+          </CardContent>
+        </Card>
       ) : (
-        <div className="space-y-3">
-          {sessionsQ.data?.length === 0 && (
-            <Card>
-              <CardContent className="p-12 text-center text-sm text-muted-foreground">
-                기록된 수업이 없습니다.
-              </CardContent>
-            </Card>
-          )}
-          {sessionsQ.data?.map((s) => (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((s) => (
             <Link key={s.id} href={`/classes/${s.id}`}>
-              <Card className="hover:shadow-md transition">
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-md bg-foreground/5 grid place-items-center">
-                    <CalendarDays className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium truncate">{s.topic ?? '제목 없음'}</p>
-                      {s.subject && <Badge variant="secondary">{s.subject.name}</Badge>}
+              <Card className="h-full transition hover:shadow-md">
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-foreground/5">
+                      <CalendarDays className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{s.topic ?? '제목 없음'}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {s.organization && <Badge variant="outline">{s.organization.name}</Badge>}
+                        {s.subject && <Badge variant="secondary">{s.subject.name}</Badge>}
+                      </div>
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        {new Date(s.session_date).toLocaleDateString('ko-KR')}{' '}
+                        {s.start_time && `${s.start_time.slice(0, 5)}`}
+                        {s.end_time && ` ~ ${s.end_time.slice(0, 5)}`}
+                        {s.teacher && ` · ${s.teacher.full_name}`}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {new Date(s.session_date).toLocaleDateString('ko-KR')}{' '}
-                      {s.start_time && `${s.start_time.slice(0, 5)}`}
-                      {s.end_time && ` ~ ${s.end_time.slice(0, 5)}`}
-                      {s.teacher && ` · ${s.teacher.full_name}`}
-                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -98,12 +148,25 @@ export function ClassesClient({ initialOrgId }: { initialOrgId: string | null })
   );
 }
 
-function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | null }) {
+function NewSessionDialog({
+  orgs,
+  defaultOrgId,
+  userId,
+}: {
+  orgs: OrgWithSubject[];
+  defaultOrgId: string;
+  userId: string | null;
+}) {
   const { tenantId } = useCurrentTenant();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const subjectsQ = useQuery({ queryKey: ['subjects', tenantId], enabled: !!tenantId && open, queryFn: () => fetchSubjects(tenantId!) });
+  const subjectsQ = useQuery({
+    queryKey: ['subjects', tenantId],
+    enabled: !!tenantId && open,
+    queryFn: () => fetchSubjects(tenantId!),
+  });
   const [form, setForm] = useState({
+    organization_id: defaultOrgId,
     session_date: new Date().toISOString().slice(0, 10),
     start_time: '',
     end_time: '',
@@ -119,11 +182,11 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    if (!form.session_date) return;
+    if (!form.session_date || !form.organization_id) return;
     setBusy(true);
     try {
       const created = await createClassSession({
-        organization_id: orgId,
+        organization_id: form.organization_id,
         session_date: form.session_date,
         start_time: form.start_time || null,
         end_time: form.end_time || null,
@@ -135,7 +198,7 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
       const wantHomework = form.add_homework && form.hw_title.trim().length > 0;
       await upsertSessionAssignment({
         sessionId: created.id,
-        organizationId: orgId,
+        organizationId: form.organization_id,
         subjectId: form.subject_id,
         createdBy: userId,
         assignment: wantHomework
@@ -147,7 +210,7 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
             }
           : null,
       });
-      qc.invalidateQueries({ queryKey: ['class-sessions', orgId] });
+      qc.invalidateQueries({ queryKey: ['class-sessions-multi'] });
       toast.success(
         wantHomework
           ? '수업 + 과제 생성됨 (학생 출결·제출 자동 생성)'
@@ -174,26 +237,67 @@ function NewSessionDialog({ orgId, userId }: { orgId: string; userId: string | n
         </DialogHeader>
         <div className="space-y-3">
           <div>
+            <Label>반</Label>
+            <Select
+              value={form.organization_id}
+              onValueChange={(v) => v && setForm({ ...form, organization_id: v })}
+            >
+              <SelectTrigger>
+                <SelectValue>
+                  {(value) =>
+                    orgs.find((o) => o.id === String(value ?? ''))?.name ?? '반 선택'
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {orgs.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
             <Label>날짜</Label>
-            <Input type="date" value={form.session_date} onChange={(e) => setForm({ ...form, session_date: e.target.value })} />
+            <Input
+              type="date"
+              value={form.session_date}
+              onChange={(e) => setForm({ ...form, session_date: e.target.value })}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>시작</Label>
-              <Input type="time" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} />
+              <Input
+                type="time"
+                value={form.start_time}
+                onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+              />
             </div>
             <div>
               <Label>종료</Label>
-              <Input type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} />
+              <Input
+                type="time"
+                value={form.end_time}
+                onChange={(e) => setForm({ ...form, end_time: e.target.value })}
+              />
             </div>
           </div>
           <div>
             <Label>주제</Label>
-            <Input value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} placeholder="예: 미분의 활용" />
+            <Input
+              value={form.topic}
+              onChange={(e) => setForm({ ...form, topic: e.target.value })}
+              placeholder="예: 미분의 활용"
+            />
           </div>
           <div>
             <Label>과목</Label>
-            <Select value={form.subject_id ?? '__none'} onValueChange={(v) => setForm({ ...form, subject_id: v === '__none' ? null : v })}>
+            <Select
+              value={form.subject_id ?? '__none'}
+              onValueChange={(v) => setForm({ ...form, subject_id: v === '__none' ? null : v })}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="선택">
                   {(value) => {
