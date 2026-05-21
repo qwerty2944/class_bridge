@@ -6,11 +6,17 @@ import { createClient } from '@/shared/api/supabase/server';
 import { RichContent } from '@/features/rich-text-editor';
 import type {
   Assignment,
+  AssignmentSubmission,
   ClassSession,
   Organization,
   Profile,
   Subject,
+  SubmissionQuality,
 } from '@/shared/types/database';
+import { SUBMISSION_QUALITY_LABEL } from '@/shared/types/database';
+
+type SubmissionWithStudent = AssignmentSubmission & { student: Profile | null };
+type ReviewedAssignment = Assignment & { submissions: SubmissionWithStudent[] };
 
 type SharedSession = ClassSession & {
   subject: Subject | null;
@@ -19,7 +25,7 @@ type SharedSession = ClassSession & {
   // 이번 수업에서 나가는 과제 (source_session_id = this).
   assignments: Assignment[];
   // 지난 과제 점검 (class_session_reviews junction).
-  class_session_reviews: { assignment: Assignment | null }[];
+  class_session_reviews: { assignment: ReviewedAssignment | null }[];
 };
 
 // generateMetadata + 페이지가 같은 요청 내에서 쿼리를 공유하도록 cache() 로 감쌈.
@@ -28,7 +34,7 @@ const getSharedSession = cache(async (token: string): Promise<SharedSession | nu
   const { data } = await supabase
     .from('class_sessions')
     .select(
-      '*, subject:subjects(*), teacher:profiles!class_sessions_teacher_id_fkey(*), organization:organizations(*), assignments:assignments!assignments_source_session_id_fkey(*), class_session_reviews(assignment:assignments(*))',
+      '*, subject:subjects(*), teacher:profiles!class_sessions_teacher_id_fkey(*), organization:organizations(*), assignments:assignments!assignments_source_session_id_fkey(*), class_session_reviews(assignment:assignments(*, submissions:assignment_submissions(*, student:profiles(*))))',
     )
     .eq('share_token', token)
     .maybeSingle();
@@ -128,7 +134,7 @@ export default async function SharedClassPage({
         {(() => {
           const reviewed = (s.class_session_reviews ?? [])
             .map((r) => r.assignment)
-            .filter((a): a is Assignment => !!a);
+            .filter((a): a is ReviewedAssignment => !!a);
           if (reviewed.length === 0) return null;
           return (
             <section className="rounded-xl border bg-card p-6 shadow-sm">
@@ -136,21 +142,57 @@ export default async function SharedClassPage({
                 지난 과제 점검
               </h2>
               <ul className="space-y-3">
-                {reviewed.map((a) => (
-                  <li key={a.id} className="rounded-md border bg-muted/20 p-3">
-                    <p className="text-sm font-medium">{a.title}</p>
-                    {a.description_md && (
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-                        {a.description_md}
-                      </p>
-                    )}
-                    {a.due_at && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        마감: {new Date(a.due_at).toLocaleString('ko-KR')}
-                      </p>
-                    )}
-                  </li>
-                ))}
+                {reviewed.map((a) => {
+                  // 선생님이 컨펌한 학생 = status='graded' (등급 매겨 확정).
+                  const approved = (a.submissions ?? []).filter((sub) => sub.status === 'graded');
+                  const pending = (a.submissions ?? []).filter((sub) => sub.status !== 'graded');
+                  return (
+                    <li key={a.id} className="rounded-md border bg-muted/20 p-3">
+                      <p className="text-sm font-medium">{a.title}</p>
+                      {a.description_md && (
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                          {a.description_md}
+                        </p>
+                      )}
+                      {a.due_at && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          마감: {new Date(a.due_at).toLocaleString('ko-KR')}
+                        </p>
+                      )}
+                      {(approved.length > 0 || pending.length > 0) && (
+                        <div className="mt-3 border-t pt-3 space-y-1.5">
+                          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                            점검 결과
+                          </p>
+                          {approved.map((sub) => (
+                            <div
+                              key={sub.id}
+                              className="flex items-center justify-between gap-2 text-sm"
+                            >
+                              <span className="truncate">{sub.student?.full_name ?? '학생'}</span>
+                              <span
+                                className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${qualityTone(sub.quality)}`}
+                              >
+                                {SUBMISSION_QUALITY_LABEL[sub.quality]}
+                              </span>
+                            </div>
+                          ))}
+                          {pending.map((sub) => (
+                            <div
+                              key={sub.id}
+                              className="flex items-center justify-between gap-2 text-sm text-muted-foreground"
+                            >
+                              <span className="truncate">{sub.student?.full_name ?? '학생'}</span>
+                              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">
+                                미확인
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           );
@@ -160,4 +202,17 @@ export default async function SharedClassPage({
       </div>
     </main>
   );
+}
+
+function qualityTone(q: SubmissionQuality): string {
+  switch (q) {
+    case 'excellent':
+      return 'bg-indigo-600 text-white';
+    case 'done':
+      return 'bg-emerald-500 text-white';
+    case 'partial':
+      return 'bg-amber-500 text-white';
+    default:
+      return 'bg-muted text-muted-foreground';
+  }
 }
