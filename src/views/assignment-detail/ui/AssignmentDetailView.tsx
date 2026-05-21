@@ -257,7 +257,8 @@ function TeacherGrading({
           <p className="text-sm text-muted-foreground text-center py-6">학생이 없습니다.</p>
         ) : (
           sQ.data?.map((s) => {
-            const done = s.status === 'graded' || s.status === 'submitted';
+            const approved = s.status === 'graded';
+            const studentSubmitted = s.status === 'submitted';
             return (
             <div key={s.id} className="py-3 space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
@@ -268,21 +269,62 @@ function TeacherGrading({
                   <p className="text-sm font-medium truncate">{s.student?.full_name}</p>
                   <p className="text-xs text-muted-foreground truncate">{s.student?.email}</p>
                 </div>
-                <label className="flex cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs whitespace-nowrap">
-                  <Checkbox
-                    checked={done}
-                    onCheckedChange={(c) =>
+                {/* 상태 배지 — '제출' 은 학생이 직접 올림(검토 필요), '확인됨' 은 선생 승인 완료 */}
+                <Badge
+                  variant={approved ? 'default' : studentSubmitted ? 'outline' : 'secondary'}
+                  className={studentSubmitted ? 'border-amber-400 text-amber-700' : ''}
+                >
+                  {approved ? '확인됨' : studentSubmitted ? '학생 제출' : '미제출'}
+                </Badge>
+                {/* 액션 — 제출 상태별로 다른 컨트롤 */}
+                {studentSubmitted ? (
+                  // 학생이 이미 제출한 건 → '승인' 버튼 (XP 지급)
+                  <Button
+                    size="sm"
+                    onClick={() =>
                       checkMutation.mutate({
                         submissionId: s.id,
                         studentId: s.student_id,
                         studentFullName: s.student?.full_name ?? null,
-                        checked: c === true,
+                        checked: true,
                       })
                     }
-                  />
-                  과제 완료
-                </label>
-                <Badge variant={done ? 'default' : 'secondary'}>{SUBMISSION_LABEL[s.status]}</Badge>
+                  >
+                    승인
+                  </Button>
+                ) : approved ? (
+                  // 이미 확인된 건 → 취소 가능
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      checkMutation.mutate({
+                        submissionId: s.id,
+                        studentId: s.student_id,
+                        studentFullName: s.student?.full_name ?? null,
+                        checked: false,
+                      })
+                    }
+                  >
+                    취소
+                  </Button>
+                ) : (
+                  // 미제출 → 선생님이 직접 '확인' 체크 가능
+                  <label className="flex cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs whitespace-nowrap">
+                    <Checkbox
+                      checked={false}
+                      onCheckedChange={(c) =>
+                        checkMutation.mutate({
+                          submissionId: s.id,
+                          studentId: s.student_id,
+                          studentFullName: s.student?.full_name ?? null,
+                          checked: c === true,
+                        })
+                      }
+                    />
+                    직접 확인
+                  </label>
+                )}
               </div>
               {s.content_md && (
                 <p className="text-sm whitespace-pre-wrap pl-11 text-muted-foreground">{s.content_md}</p>

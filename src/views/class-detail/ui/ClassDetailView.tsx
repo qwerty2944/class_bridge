@@ -208,7 +208,8 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
           ) : (
             aQ.data?.map((a) => {
               const sub = assignment?.submissions.find((x) => x.student_id === a.student_id) ?? null;
-              const done = sub?.status === 'graded' || sub?.status === 'submitted';
+              const approved = sub?.status === 'graded';
+              const studentSubmitted = sub?.status === 'submitted';
               return (
                 <div key={a.id} className="flex items-center gap-3 py-3 flex-wrap">
                   <Avatar className="h-9 w-9">
@@ -221,21 +222,54 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                   {canEdit ? (
                     <div className="flex items-center gap-2 flex-wrap">
                       {assignment && sub && (
-                        <label className="flex cursor-pointer items-center gap-1.5 text-xs whitespace-nowrap">
-                          <Checkbox
-                            checked={done}
-                            onCheckedChange={(c) =>
+                        studentSubmitted ? (
+                          <Button
+                            size="sm"
+                            onClick={() =>
                               homework.mutate({
                                 submissionId: sub.id,
                                 studentId: a.student_id,
                                 studentFullName: a.student?.full_name ?? null,
-                                checked: c === true,
+                                checked: true,
                                 xpReward: assignment.xp_reward,
                               })
                             }
-                          />
-                          과제 완료
-                        </label>
+                          >
+                            제출 승인
+                          </Button>
+                        ) : approved ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              homework.mutate({
+                                submissionId: sub.id,
+                                studentId: a.student_id,
+                                studentFullName: a.student?.full_name ?? null,
+                                checked: false,
+                                xpReward: assignment.xp_reward,
+                              })
+                            }
+                          >
+                            확인 취소
+                          </Button>
+                        ) : (
+                          <label className="flex cursor-pointer items-center gap-1.5 text-xs whitespace-nowrap">
+                            <Checkbox
+                              checked={false}
+                              onCheckedChange={(c) =>
+                                homework.mutate({
+                                  submissionId: sub.id,
+                                  studentId: a.student_id,
+                                  studentFullName: a.student?.full_name ?? null,
+                                  checked: c === true,
+                                  xpReward: assignment.xp_reward,
+                                })
+                              }
+                            />
+                            직접 확인
+                          </label>
+                        )
                       )}
                       <Select
                         value={a.status}
@@ -268,8 +302,8 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                   ) : (
                     <div className="flex items-center gap-1.5">
                       {assignment && (
-                        <Badge variant={done ? 'default' : 'outline'}>
-                          과제 {done ? '완료' : '미완료'}
+                        <Badge variant={approved ? 'default' : studentSubmitted ? 'outline' : 'secondary'}>
+                          과제 {approved ? '확인됨' : studentSubmitted ? '제출' : '미제출'}
                         </Badge>
                       )}
                       <Badge variant={a.status === 'present' ? 'default' : 'secondary'}>
@@ -421,12 +455,12 @@ function PastHomeworkCheck({
           ) : !hwQ.data || hwQ.data.submissions.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">학생이 없습니다.</p>
           ) : (
-            renderSubmissions(hwQ.data, (sub) =>
+            renderSubmissions(hwQ.data, (sub, checked) =>
               homework.mutate({
                 submissionId: sub.id,
                 studentId: sub.student_id,
                 studentFullName: sub.student?.full_name ?? null,
-                checked: !(sub.status === 'graded' || sub.status === 'submitted'),
+                checked,
               }),
             )
           )}
@@ -438,20 +472,37 @@ function PastHomeworkCheck({
 
 function renderSubmissions(
   assignment: SessionAssignment,
-  onToggle: (sub: SessionAssignment['submissions'][number]) => void,
+  onToggle: (sub: SessionAssignment['submissions'][number], checked: boolean) => void,
 ) {
   return assignment.submissions.map((sub) => {
-    const done = sub.status === 'graded' || sub.status === 'submitted';
+    const approved = sub.status === 'graded';
+    const studentSubmitted = sub.status === 'submitted';
     return (
-      <div key={sub.id} className="flex items-center gap-3 py-2.5">
+      <div key={sub.id} className="flex items-center gap-3 py-2.5 flex-wrap">
         <Avatar className="h-8 w-8">
           <AvatarFallback>{sub.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
         </Avatar>
         <p className="min-w-0 flex-1 truncate text-sm font-medium">{sub.student?.full_name}</p>
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs whitespace-nowrap">
-          <Checkbox checked={done} onCheckedChange={() => onToggle(sub)} />
-          과제 완료
-        </label>
+        <Badge
+          variant={approved ? 'default' : studentSubmitted ? 'outline' : 'secondary'}
+          className={studentSubmitted ? 'border-amber-400 text-amber-700' : ''}
+        >
+          {approved ? '확인됨' : studentSubmitted ? '학생 제출' : '미제출'}
+        </Badge>
+        {studentSubmitted ? (
+          <Button size="sm" onClick={() => onToggle(sub, true)}>
+            제출 승인
+          </Button>
+        ) : approved ? (
+          <Button size="sm" variant="outline" onClick={() => onToggle(sub, false)}>
+            확인 취소
+          </Button>
+        ) : (
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs whitespace-nowrap">
+            <Checkbox checked={false} onCheckedChange={(c) => onToggle(sub, c === true)} />
+            직접 확인
+          </label>
+        )}
       </div>
     );
   });
