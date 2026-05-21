@@ -152,16 +152,17 @@ export async function upsertSessionAssignment(input: {
   });
 }
 
-// 과제 점검 4단계 (안 햇음 / 햇는데 미흡 / 햇음 / 아주 잘 햇음) — submission 의 quality + status
-// 를 갱신하고 awardForGrade 로 XP delta 처리. awardForGrade 가 source_ref=submissionId 로
-// idempotent 라 단계 사이를 자유롭게 오가도 reward_events 가 단일 row 만 갱신된다.
-//
-// XP 배수:
-// - 'none': 0 (status='pending', 회수)
-// - 'partial': xpReward * 0.5 (status='graded')
-// - 'done': xpReward * 1.0 (status='graded')
-// - 'excellent': xpReward * 1.5 (status='graded', 보너스)
-export async function setHomeworkQuality(args: {
+// 과제 등급별 XP 배수 — none=0, partial=0.5, done=1.0, excellent=1.5.
+const QUALITY_MULTIPLIER: Record<'none' | 'partial' | 'done' | 'excellent', number> = {
+  none: 0,
+  partial: 0.5,
+  done: 1.0,
+  excellent: 1.5,
+};
+
+// 4단계 등급만 갱신 (확정 X) — 학생이 status='graded' 로 이미 확정된 행에서는 quality 변경에
+// 따라 XP delta 도 같이 적용. status='pending' 이면 quality 만 저장하고 XP 는 안 건드림.
+export async function setSubmissionQuality(args: {
   submissionId: string;
   tenantId: string;
   studentUserId: string;
@@ -170,39 +171,59 @@ export async function setHomeworkQuality(args: {
   xpReward: number;
 }) {
   const client = sb();
+  const { data: cur, error: e1 } = await client
+    .from('assignment_submissions')
+    .select('status')
+    .eq('id', args.submissionId)
+    .single();
+  if (e1) throw e1;
+  const wasApproved = (cur as { status: string } | null)?.status === 'graded';
 
-  if (args.quality === 'none') {
+  const { error } = await client
+    .from('assignment_submissions')
+    .update({ quality: args.quality })
+    .eq('id', args.submissionId);
+  if (error) throw error;
+
+  if (!wasApproved) return null;
+
+  // 이미 확정된 행: 새 quality 에 맞춰 XP 재지급(delta).
+  return awardForGrade({
+    tenantId: args.tenantId,
+    studentUserId: args.studentUserId,
+    studentFullName: args.studentFullName,
+    submissionId: args.submissionId,
+    score: 0,
+    xpReward: Math.round(args.xpReward * QUALITY_MULTIPLIER[args.quality]),
+  });
+}
+
+// 승인 토글 — status 를 pending↔graded 로 전환하고 현재 quality 기반 XP 를 지급/회수.
+// 승인 == '이 학생 행을 확정' (선생님이 책임지고 결재). 취소하면 XP 도 함께 회수.
+export async function setSubmissionApproved(args: {
+  submissionId: string;
+  tenantId: string;
+  studentUserId: string;
+  studentFullName?: string | null;
+  approved: boolean;
+  quality: 'none' | 'partial' | 'done' | 'excellent';
+  xpReward: number;
+}) {
+  const client = sb();
+
+  if (args.approved) {
     const { error } = await client
       .from('assignment_submissions')
-      .update({
-        quality: 'none' as const,
-        status: 'pending' as const,
-        submitted_at: null,
-        score: null,
-        feedback_md: null,
-      })
+      .update({ status: 'graded' as const, submitted_at: new Date().toISOString() })
       .eq('id', args.submissionId);
     if (error) throw error;
   } else {
     const { error } = await client
       .from('assignment_submissions')
-      .update({
-        quality: args.quality,
-        status: 'graded' as const,
-        submitted_at: new Date().toISOString(),
-      })
+      .update({ status: 'pending' as const, submitted_at: null })
       .eq('id', args.submissionId);
     if (error) throw error;
   }
-
-  const multiplier =
-    args.quality === 'excellent'
-      ? 1.5
-      : args.quality === 'done'
-        ? 1.0
-        : args.quality === 'partial'
-          ? 0.5
-          : 0;
 
   return awardForGrade({
     tenantId: args.tenantId,
@@ -210,8 +231,18 @@ export async function setHomeworkQuality(args: {
     studentFullName: args.studentFullName,
     submissionId: args.submissionId,
     score: 0,
-    xpReward: Math.round(args.xpReward * multiplier),
+    xpReward: args.approved ? Math.round(args.xpReward * QUALITY_MULTIPLIER[args.quality]) : 0,
   });
+}
+
+// 이전 호환 — 외부에서 setHomeworkQuality 를 부르던 코드를 위해 setSubmissionQuality + 자동 승인
+// 한 번에 처리해주는 wrapper. 새 코드는 위 두 함수를 분리해서 호출 권장.
+export async function setHomeworkQuality(args: Parameters<typeof setSubmissionQuality>[0]) {
+  if (args.quality === 'none') {
+    // 'none' 선택 = 확정 해제(즉 미제출 상태로)
+    return setSubmissionApproved({ ...args, approved: false });
+  }
+  return setSubmissionApproved({ ...args, approved: true });
 }
 
 export async function updateAssignment(id: string, patch: Partial<Assignment>) {

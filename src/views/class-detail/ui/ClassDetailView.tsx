@@ -35,7 +35,8 @@ import {
 import {
   fetchSessionAssignment,
   fetchSessionAssignmentMap,
-  setHomeworkQuality,
+  setSubmissionApproved,
+  setSubmissionQuality,
   upsertSessionAssignment,
   type SessionAssignment,
 } from '@/entities/assignment';
@@ -75,8 +76,8 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['attendances', sessionId] }),
   });
 
-  // 과제 점검 3단계 — 학생 submission 의 quality 갱신 + XP delta 처리.
-  const homework = useMutation({
+  // 4-state 등급만 갱신 — 확정 여부와 무관. 이미 확정된 행이면 XP delta 자동 적용.
+  const quality = useMutation({
     mutationFn: async ({
       submissionId,
       studentId,
@@ -91,7 +92,7 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
       xpReward: number;
     }) => {
       if (!tenantId) return null;
-      return setHomeworkQuality({
+      return setSubmissionQuality({
         submissionId,
         tenantId,
         studentUserId: studentId,
@@ -105,13 +106,51 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
       qc.invalidateQueries({ queryKey: ['character'] });
       const label = SUBMISSION_QUALITY_LABEL[vars.quality];
       if (r && r.xpAdded !== 0) {
-        toast.success(
-          r.leveledUp
-            ? `${label}! ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP — Lv.${r.oldLevel}→Lv.${r.newLevel}`
-            : `${label} — ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP`,
-        );
+        toast.success(`${label} — ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP`);
       } else {
         toast.success(label);
+      }
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  // 승인 토글 — 현재 quality 기준 XP 지급/회수, status pending↔graded.
+  const approve = useMutation({
+    mutationFn: async ({
+      submissionId,
+      studentId,
+      studentFullName,
+      approved,
+      quality,
+      xpReward,
+    }: {
+      submissionId: string;
+      studentId: string;
+      studentFullName: string | null;
+      approved: boolean;
+      quality: SubmissionQuality;
+      xpReward: number;
+    }) => {
+      if (!tenantId) return null;
+      return setSubmissionApproved({
+        submissionId,
+        tenantId,
+        studentUserId: studentId,
+        studentFullName,
+        approved,
+        quality,
+        xpReward,
+      });
+    },
+    onSuccess: (r, vars) => {
+      qc.invalidateQueries({ queryKey: ['session-assignment', sessionId] });
+      qc.invalidateQueries({ queryKey: ['character'] });
+      if (r && r.xpAdded !== 0) {
+        toast.success(
+          vars.approved ? `확정 — +${r.xpAdded} XP` : `확정 해제 — ${r.xpAdded} XP`,
+        );
+      } else {
+        toast.success(vars.approved ? '확정됨' : '확정 해제됨');
       }
     },
     onError: (e) => toast.error((e as Error).message),
@@ -234,24 +273,27 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                               학생 제출
                             </Badge>
                           )}
-                          {/* 제출 승인 — 학생 상태와 무관하게 한 번 클릭으로 quality='done' 처리 */}
+                          {/* 승인 = 현재 quality 로 확정/해제 */}
                           <Button
                             size="sm"
-                            variant={sub.quality === 'done' ? 'default' : 'outline'}
+                            variant={sub.status === 'graded' ? 'default' : 'outline'}
                             onClick={() =>
-                              homework.mutate({
+                              approve.mutate({
                                 submissionId: sub.id,
                                 studentId: a.student_id,
                                 studentFullName: a.student?.full_name ?? null,
-                                quality: 'done',
+                                approved: sub.status !== 'graded',
+                                quality: sub.quality,
                                 xpReward: assignment.xp_reward,
                               })
                             }
-                          >승인</Button>
+                          >
+                            {sub.status === 'graded' ? '확정됨' : '승인'}
+                          </Button>
                           <QualitySegmented
                             value={sub.quality}
                             onChange={(q) =>
-                              homework.mutate({
+                              quality.mutate({
                                 submissionId: sub.id,
                                 studentId: a.student_id,
                                 studentFullName: a.student?.full_name ?? null,
@@ -376,25 +418,21 @@ function PastHomeworkCheck({
     queryFn: () => fetchSessionAssignment(selectedId),
   });
 
-  const homework = useMutation({
-    mutationFn: async ({
-      submissionId,
-      studentId,
-      studentFullName,
-      quality,
-    }: {
+  const xpReward = hwQ.data?.xp_reward ?? 0;
+  const quality = useMutation({
+    mutationFn: async (args: {
       submissionId: string;
       studentId: string;
       studentFullName: string | null;
       quality: SubmissionQuality;
     }) =>
-      setHomeworkQuality({
-        submissionId,
+      setSubmissionQuality({
+        submissionId: args.submissionId,
         tenantId,
-        studentUserId: studentId,
-        studentFullName,
-        quality,
-        xpReward: hwQ.data?.xp_reward ?? 0,
+        studentUserId: args.studentId,
+        studentFullName: args.studentFullName,
+        quality: args.quality,
+        xpReward,
       }),
     onSuccess: (r, vars) => {
       qc.invalidateQueries({ queryKey: ['session-assignment', selectedId] });
@@ -404,6 +442,37 @@ function PastHomeworkCheck({
         toast.success(`${label} — ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP`);
       } else {
         toast.success(label);
+      }
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const approve = useMutation({
+    mutationFn: async (args: {
+      submissionId: string;
+      studentId: string;
+      studentFullName: string | null;
+      approved: boolean;
+      quality: SubmissionQuality;
+    }) =>
+      setSubmissionApproved({
+        submissionId: args.submissionId,
+        tenantId,
+        studentUserId: args.studentId,
+        studentFullName: args.studentFullName,
+        approved: args.approved,
+        quality: args.quality,
+        xpReward,
+      }),
+    onSuccess: (r, vars) => {
+      qc.invalidateQueries({ queryKey: ['session-assignment', selectedId] });
+      qc.invalidateQueries({ queryKey: ['character'] });
+      if (r && r.xpAdded !== 0) {
+        toast.success(
+          vars.approved ? `확정 — +${r.xpAdded} XP` : `확정 해제 — ${r.xpAdded} XP`,
+        );
+      } else {
+        toast.success(vars.approved ? '확정됨' : '확정 해제됨');
       }
     },
     onError: (e) => toast.error((e as Error).message),
@@ -465,13 +534,23 @@ function PastHomeworkCheck({
           ) : !hwQ.data || hwQ.data.submissions.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">학생이 없습니다.</p>
           ) : (
-            renderSubmissions(hwQ.data, (sub, quality) =>
-              homework.mutate({
-                submissionId: sub.id,
-                studentId: sub.student_id,
-                studentFullName: sub.student?.full_name ?? null,
-                quality,
-              }),
+            renderSubmissions(
+              hwQ.data,
+              (sub, q) =>
+                quality.mutate({
+                  submissionId: sub.id,
+                  studentId: sub.student_id,
+                  studentFullName: sub.student?.full_name ?? null,
+                  quality: q,
+                }),
+              (sub, approved) =>
+                approve.mutate({
+                  submissionId: sub.id,
+                  studentId: sub.student_id,
+                  studentFullName: sub.student?.full_name ?? null,
+                  approved,
+                  quality: sub.quality,
+                }),
             )
           )}
         </div>
@@ -482,10 +561,12 @@ function PastHomeworkCheck({
 
 function renderSubmissions(
   assignment: SessionAssignment,
-  onChange: (sub: SessionAssignment['submissions'][number], quality: SubmissionQuality) => void,
+  onQuality: (sub: SessionAssignment['submissions'][number], q: SubmissionQuality) => void,
+  onApprove: (sub: SessionAssignment['submissions'][number], approved: boolean) => void,
 ) {
   return assignment.submissions.map((sub) => {
     const studentSubmitted = sub.status === 'submitted';
+    const isApproved = sub.status === 'graded';
     return (
       <div key={sub.id} className="flex items-center gap-3 py-2.5 flex-wrap">
         <Avatar className="h-8 w-8">
@@ -499,10 +580,12 @@ function renderSubmissions(
         )}
         <Button
           size="sm"
-          variant={sub.quality === 'done' ? 'default' : 'outline'}
-          onClick={() => onChange(sub, 'done')}
-        >승인</Button>
-        <QualitySegmented value={sub.quality} onChange={(q) => onChange(sub, q)} />
+          variant={isApproved ? 'default' : 'outline'}
+          onClick={() => onApprove(sub, !isApproved)}
+        >
+          {isApproved ? '확정됨' : '승인'}
+        </Button>
+        <QualitySegmented value={sub.quality} onChange={(q) => onQuality(sub, q)} />
       </div>
     );
   });

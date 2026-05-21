@@ -18,7 +18,8 @@ import {
   fetchMySubmission,
   fetchSubmissions,
   gradeSubmission,
-  setHomeworkQuality,
+  setSubmissionApproved,
+  setSubmissionQuality,
   submitAssignment,
   updateAssignment,
 } from '@/entities/assignment';
@@ -211,7 +212,7 @@ function TeacherGrading({
     qc.invalidateQueries({ queryKey: ['character'] });
   };
 
-  // 과제 점검 3단계 — '안 햇음 / 햇음 / 아주 잘 햇음'. 'excellent' 는 xpReward * 1.5 보너스.
+  // 4-state 등급 변경 — 확정 여부와 무관하게 quality 만 저장. 이미 확정된 행이면 XP delta 자동 적용.
   const qualityMutation = useMutation({
     mutationFn: (args: {
       submissionId: string;
@@ -219,7 +220,7 @@ function TeacherGrading({
       studentFullName: string | null;
       quality: SubmissionQuality;
     }) =>
-      setHomeworkQuality({
+      setSubmissionQuality({
         submissionId: args.submissionId,
         tenantId,
         studentUserId: args.studentId,
@@ -232,13 +233,45 @@ function TeacherGrading({
       qc.invalidateQueries({ queryKey: ['character'] });
       const label = SUBMISSION_QUALITY_LABEL[vars.quality];
       if (r && r.xpAdded !== 0) {
-        toast.success(
-          r.leveledUp
-            ? `${label}! ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP — Lv.${r.oldLevel}→Lv.${r.newLevel}`
-            : `${label} — ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP`,
-        );
+        toast.success(`${label} — ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP`);
       } else {
         toast.success(label);
+      }
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  // 승인 토글 — status 를 graded/pending 전환하고 현재 quality 기준 XP 지급/회수.
+  const approveMutation = useMutation({
+    mutationFn: (args: {
+      submissionId: string;
+      studentId: string;
+      studentFullName: string | null;
+      approved: boolean;
+      quality: SubmissionQuality;
+    }) =>
+      setSubmissionApproved({
+        submissionId: args.submissionId,
+        tenantId,
+        studentUserId: args.studentId,
+        studentFullName: args.studentFullName,
+        approved: args.approved,
+        quality: args.quality,
+        xpReward,
+      }),
+    onSuccess: (r, vars) => {
+      qc.invalidateQueries({ queryKey: ['submissions', assignmentId] });
+      qc.invalidateQueries({ queryKey: ['character'] });
+      if (r && r.xpAdded !== 0) {
+        toast.success(
+          r.leveledUp
+            ? `확정! ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP — Lv.${r.oldLevel}→Lv.${r.newLevel}`
+            : vars.approved
+              ? `확정 — +${r.xpAdded} XP`
+              : `확정 해제 — ${r.xpAdded} XP`,
+        );
+      } else {
+        toast.success(vars.approved ? '확정됨' : '확정 해제됨');
       }
     },
     onError: (e) => toast.error((e as Error).message),
@@ -272,19 +305,22 @@ function TeacherGrading({
                     학생 제출
                   </Badge>
                 )}
-                {/* 제출 승인 — 학생 상태와 무관하게 한 번 클릭으로 quality='done' 처리 */}
+                {/* 승인 = 현재 quality 로 확정/해제. status='graded' 이면 default variant 로 강조. */}
                 <Button
                   size="sm"
-                  variant={s.quality === 'done' ? 'default' : 'outline'}
+                  variant={s.status === 'graded' ? 'default' : 'outline'}
                   onClick={() =>
-                    qualityMutation.mutate({
+                    approveMutation.mutate({
                       submissionId: s.id,
                       studentId: s.student_id,
                       studentFullName: s.student?.full_name ?? null,
-                      quality: 'done',
+                      approved: s.status !== 'graded',
+                      quality: s.quality,
                     })
                   }
-                >승인</Button>
+                >
+                  {s.status === 'graded' ? '확정됨' : '승인'}
+                </Button>
                 <QualitySegmented
                   value={s.quality}
                   onChange={(q) =>
