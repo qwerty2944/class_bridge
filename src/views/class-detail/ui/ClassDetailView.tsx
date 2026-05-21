@@ -230,9 +230,25 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                       {assignment && sub && (
                         <>
                           {studentSubmitted && (
-                            <Badge variant="outline" className="border-amber-400 text-amber-700">
-                              학생 제출
-                            </Badge>
+                            <>
+                              <Badge variant="outline" className="border-amber-400 text-amber-700">
+                                학생 제출
+                              </Badge>
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  homework.mutate({
+                                    submissionId: sub.id,
+                                    studentId: a.student_id,
+                                    studentFullName: a.student?.full_name ?? null,
+                                    quality: 'done',
+                                    xpReward: assignment.xp_reward,
+                                  })
+                                }
+                              >
+                                제출 승인
+                              </Button>
+                            </>
                           )}
                           <QualitySegmented
                             value={sub.quality}
@@ -475,9 +491,14 @@ function renderSubmissions(
         </Avatar>
         <p className="min-w-0 flex-1 truncate text-sm font-medium">{sub.student?.full_name}</p>
         {studentSubmitted && (
-          <Badge variant="outline" className="border-amber-400 text-amber-700">
-            학생 제출
-          </Badge>
+          <>
+            <Badge variant="outline" className="border-amber-400 text-amber-700">
+              학생 제출
+            </Badge>
+            <Button size="sm" onClick={() => onChange(sub, 'done')}>
+              제출 승인
+            </Button>
+          </>
         )}
         <QualitySegmented value={sub.quality} onChange={(q) => onChange(sub, q)} />
       </div>

@@ -268,9 +268,24 @@ function TeacherGrading({
                   <p className="text-xs text-muted-foreground truncate">{s.student?.email}</p>
                 </div>
                 {studentSubmitted && (
-                  <Badge variant="outline" className="border-amber-400 text-amber-700">
-                    학생 제출
-                  </Badge>
+                  <>
+                    <Badge variant="outline" className="border-amber-400 text-amber-700">
+                      학생 제출
+                    </Badge>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        qualityMutation.mutate({
+                          submissionId: s.id,
+                          studentId: s.student_id,
+                          studentFullName: s.student?.full_name ?? null,
+                          quality: 'done',
+                        })
+                      }
+                    >
+                      제출 승인
+                    </Button>
+                  </>
                 )}
                 <QualitySegmented
                   value={s.quality}
