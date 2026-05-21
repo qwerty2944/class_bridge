@@ -12,12 +12,14 @@ import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
+import { Checkbox } from '@/shared/ui/checkbox';
 import { Skeleton } from '@/shared/ui/skeleton';
 import {
   fetchAssignment,
   fetchMySubmission,
   fetchSubmissions,
   gradeSubmission,
+  setHomeworkChecked,
   submitAssignment,
   updateAssignment,
 } from '@/entities/assignment';
@@ -209,6 +211,40 @@ function TeacherGrading({
     qc.invalidateQueries({ queryKey: ['character'] });
   };
 
+  // 완료 체크박스 — 수업 출결 카드와 동일한 toggle. 점수 없이도 '확인' 가능.
+  const checkMutation = useMutation({
+    mutationFn: (args: {
+      submissionId: string;
+      studentId: string;
+      studentFullName: string | null;
+      checked: boolean;
+    }) =>
+      setHomeworkChecked({
+        submissionId: args.submissionId,
+        tenantId,
+        studentUserId: args.studentId,
+        studentFullName: args.studentFullName,
+        checked: args.checked,
+        xpReward,
+      }),
+    onSuccess: (r, vars) => {
+      qc.invalidateQueries({ queryKey: ['submissions', assignmentId] });
+      qc.invalidateQueries({ queryKey: ['character'] });
+      if (r && r.xpAdded !== 0) {
+        toast.success(
+          r.leveledUp
+            ? `과제 확인! +${r.xpAdded} XP — Lv.${r.oldLevel}→Lv.${r.newLevel}`
+            : r.xpAdded > 0
+              ? `과제 확인 — +${r.xpAdded} XP`
+              : `확인 취소 — ${r.xpAdded} XP`,
+        );
+      } else {
+        toast.success(vars.checked ? '확인 처리됨' : '확인 취소됨');
+      }
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -220,9 +256,11 @@ function TeacherGrading({
         ) : sQ.data?.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">학생이 없습니다.</p>
         ) : (
-          sQ.data?.map((s) => (
+          sQ.data?.map((s) => {
+            const done = s.status === 'graded' || s.status === 'submitted';
+            return (
             <div key={s.id} className="py-3 space-y-2">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <Avatar className="h-8 w-8">
                   <AvatarFallback>{s.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
                 </Avatar>
@@ -230,7 +268,21 @@ function TeacherGrading({
                   <p className="text-sm font-medium truncate">{s.student?.full_name}</p>
                   <p className="text-xs text-muted-foreground truncate">{s.student?.email}</p>
                 </div>
-                <Badge variant={s.status === 'graded' ? 'default' : 'secondary'}>{SUBMISSION_LABEL[s.status]}</Badge>
+                <label className="flex cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs whitespace-nowrap">
+                  <Checkbox
+                    checked={done}
+                    onCheckedChange={(c) =>
+                      checkMutation.mutate({
+                        submissionId: s.id,
+                        studentId: s.student_id,
+                        studentFullName: s.student?.full_name ?? null,
+                        checked: c === true,
+                      })
+                    }
+                  />
+                  과제 완료
+                </label>
+                <Badge variant={done ? 'default' : 'secondary'}>{SUBMISSION_LABEL[s.status]}</Badge>
               </div>
               {s.content_md && (
                 <p className="text-sm whitespace-pre-wrap pl-11 text-muted-foreground">{s.content_md}</p>
@@ -267,7 +319,8 @@ function TeacherGrading({
                 </div>
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </CardContent>
     </Card>
