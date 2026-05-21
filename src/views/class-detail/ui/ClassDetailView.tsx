@@ -35,14 +35,20 @@ import {
 import {
   fetchSessionAssignment,
   fetchSessionAssignmentMap,
-  setHomeworkChecked,
+  setHomeworkQuality,
   upsertSessionAssignment,
   type SessionAssignment,
 } from '@/entities/assignment';
 import { fetchSubjects } from '@/entities/subject';
 import { RichContent, RichTextEditor } from '@/features/rich-text-editor';
 import { useCurrentTenant } from '@/features/tenant-switch';
-import { ATTENDANCE_LABEL, type AttendanceStatus } from '@/shared/types/database';
+import {
+  ATTENDANCE_LABEL,
+  SUBMISSION_QUALITY_LABEL,
+  type AttendanceStatus,
+  type SubmissionQuality,
+} from '@/shared/types/database';
+import { QualitySegmented } from '@/views/assignment-detail/ui/AssignmentDetailView';
 
 const STATUSES: AttendanceStatus[] = ['present', 'late', 'absent', 'excused'];
 
@@ -69,42 +75,43 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['attendances', sessionId] }),
   });
 
-  // 과제 점검 — 학생의 assignment_submission 토글 + XP 지급/회수.
+  // 과제 점검 3단계 — 학생 submission 의 quality 갱신 + XP delta 처리.
   const homework = useMutation({
     mutationFn: async ({
       submissionId,
       studentId,
       studentFullName,
-      checked,
+      quality,
       xpReward,
     }: {
       submissionId: string;
       studentId: string;
       studentFullName: string | null;
-      checked: boolean;
+      quality: SubmissionQuality;
       xpReward: number;
     }) => {
       if (!tenantId) return null;
-      return setHomeworkChecked({
+      return setHomeworkQuality({
         submissionId,
         tenantId,
         studentUserId: studentId,
         studentFullName,
-        checked,
+        quality,
         xpReward,
       });
     },
-    onSuccess: (r) => {
+    onSuccess: (r, vars) => {
       qc.invalidateQueries({ queryKey: ['session-assignment', sessionId] });
       qc.invalidateQueries({ queryKey: ['character'] });
+      const label = SUBMISSION_QUALITY_LABEL[vars.quality];
       if (r && r.xpAdded !== 0) {
         toast.success(
           r.leveledUp
-            ? `과제 점검! +${r.xpAdded} XP — Lv.${r.oldLevel}→Lv.${r.newLevel}`
-            : r.xpAdded > 0
-              ? `과제 점검 — +${r.xpAdded} XP`
-              : `과제 점검 취소 — ${r.xpAdded} XP`,
+            ? `${label}! ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP — Lv.${r.oldLevel}→Lv.${r.newLevel}`
+            : `${label} — ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP`,
         );
+      } else {
+        toast.success(label);
       }
     },
     onError: (e) => toast.error((e as Error).message),
@@ -208,7 +215,6 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
           ) : (
             aQ.data?.map((a) => {
               const sub = assignment?.submissions.find((x) => x.student_id === a.student_id) ?? null;
-              const approved = sub?.status === 'graded';
               const studentSubmitted = sub?.status === 'submitted';
               return (
                 <div key={a.id} className="flex items-center gap-3 py-3 flex-wrap">
@@ -222,54 +228,25 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                   {canEdit ? (
                     <div className="flex items-center gap-2 flex-wrap">
                       {assignment && sub && (
-                        studentSubmitted ? (
-                          <Button
-                            size="sm"
-                            onClick={() =>
+                        <>
+                          {studentSubmitted && (
+                            <Badge variant="outline" className="border-amber-400 text-amber-700">
+                              학생 제출
+                            </Badge>
+                          )}
+                          <QualitySegmented
+                            value={sub.quality}
+                            onChange={(q) =>
                               homework.mutate({
                                 submissionId: sub.id,
                                 studentId: a.student_id,
                                 studentFullName: a.student?.full_name ?? null,
-                                checked: true,
+                                quality: q,
                                 xpReward: assignment.xp_reward,
                               })
                             }
-                          >
-                            제출 승인
-                          </Button>
-                        ) : approved ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              homework.mutate({
-                                submissionId: sub.id,
-                                studentId: a.student_id,
-                                studentFullName: a.student?.full_name ?? null,
-                                checked: false,
-                                xpReward: assignment.xp_reward,
-                              })
-                            }
-                          >
-                            확인 취소
-                          </Button>
-                        ) : (
-                          <label className="flex cursor-pointer items-center gap-1.5 text-xs whitespace-nowrap">
-                            <Checkbox
-                              checked={false}
-                              onCheckedChange={(c) =>
-                                homework.mutate({
-                                  submissionId: sub.id,
-                                  studentId: a.student_id,
-                                  studentFullName: a.student?.full_name ?? null,
-                                  checked: c === true,
-                                  xpReward: assignment.xp_reward,
-                                })
-                              }
-                            />
-                            직접 확인
-                          </label>
-                        )
+                          />
+                        </>
                       )}
                       <Select
                         value={a.status}
@@ -301,9 +278,23 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5">
-                      {assignment && (
-                        <Badge variant={approved ? 'default' : studentSubmitted ? 'outline' : 'secondary'}>
-                          과제 {approved ? '확인됨' : studentSubmitted ? '제출' : '미제출'}
+                      {assignment && sub && (
+                        <Badge
+                          variant={
+                            sub.quality === 'excellent'
+                              ? 'default'
+                              : sub.quality === 'done'
+                                ? 'secondary'
+                                : studentSubmitted
+                                  ? 'outline'
+                                  : 'secondary'
+                          }
+                        >
+                          {sub.quality === 'none'
+                            ? studentSubmitted
+                              ? '제출함'
+                              : '안 햇음'
+                            : SUBMISSION_QUALITY_LABEL[sub.quality]}
                         </Badge>
                       )}
                       <Badge variant={a.status === 'present' ? 'default' : 'secondary'}>
@@ -372,28 +363,29 @@ function PastHomeworkCheck({
       submissionId,
       studentId,
       studentFullName,
-      checked,
+      quality,
     }: {
       submissionId: string;
       studentId: string;
       studentFullName: string | null;
-      checked: boolean;
+      quality: SubmissionQuality;
     }) =>
-      setHomeworkChecked({
+      setHomeworkQuality({
         submissionId,
         tenantId,
         studentUserId: studentId,
         studentFullName,
-        checked,
+        quality,
         xpReward: hwQ.data?.xp_reward ?? 0,
       }),
-    onSuccess: (r) => {
+    onSuccess: (r, vars) => {
       qc.invalidateQueries({ queryKey: ['session-assignment', selectedId] });
       qc.invalidateQueries({ queryKey: ['character'] });
+      const label = SUBMISSION_QUALITY_LABEL[vars.quality];
       if (r && r.xpAdded !== 0) {
-        toast.success(
-          r.xpAdded > 0 ? `과제 점검 — +${r.xpAdded} XP` : `과제 점검 취소 — ${r.xpAdded} XP`,
-        );
+        toast.success(`${label} — ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP`);
+      } else {
+        toast.success(label);
       }
     },
     onError: (e) => toast.error((e as Error).message),
@@ -455,12 +447,12 @@ function PastHomeworkCheck({
           ) : !hwQ.data || hwQ.data.submissions.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">학생이 없습니다.</p>
           ) : (
-            renderSubmissions(hwQ.data, (sub, checked) =>
+            renderSubmissions(hwQ.data, (sub, quality) =>
               homework.mutate({
                 submissionId: sub.id,
                 studentId: sub.student_id,
                 studentFullName: sub.student?.full_name ?? null,
-                checked,
+                quality,
               }),
             )
           )}
@@ -472,10 +464,9 @@ function PastHomeworkCheck({
 
 function renderSubmissions(
   assignment: SessionAssignment,
-  onToggle: (sub: SessionAssignment['submissions'][number], checked: boolean) => void,
+  onChange: (sub: SessionAssignment['submissions'][number], quality: SubmissionQuality) => void,
 ) {
   return assignment.submissions.map((sub) => {
-    const approved = sub.status === 'graded';
     const studentSubmitted = sub.status === 'submitted';
     return (
       <div key={sub.id} className="flex items-center gap-3 py-2.5 flex-wrap">
@@ -483,26 +474,12 @@ function renderSubmissions(
           <AvatarFallback>{sub.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
         </Avatar>
         <p className="min-w-0 flex-1 truncate text-sm font-medium">{sub.student?.full_name}</p>
-        <Badge
-          variant={approved ? 'default' : studentSubmitted ? 'outline' : 'secondary'}
-          className={studentSubmitted ? 'border-amber-400 text-amber-700' : ''}
-        >
-          {approved ? '확인됨' : studentSubmitted ? '학생 제출' : '미제출'}
-        </Badge>
-        {studentSubmitted ? (
-          <Button size="sm" onClick={() => onToggle(sub, true)}>
-            제출 승인
-          </Button>
-        ) : approved ? (
-          <Button size="sm" variant="outline" onClick={() => onToggle(sub, false)}>
-            확인 취소
-          </Button>
-        ) : (
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs whitespace-nowrap">
-            <Checkbox checked={false} onCheckedChange={(c) => onToggle(sub, c === true)} />
-            직접 확인
-          </label>
+        {studentSubmitted && (
+          <Badge variant="outline" className="border-amber-400 text-amber-700">
+            학생 제출
+          </Badge>
         )}
+        <QualitySegmented value={sub.quality} onChange={(q) => onChange(sub, q)} />
       </div>
     );
   });

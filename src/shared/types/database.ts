@@ -10,6 +10,7 @@ export type MemberStatus = 'active' | 'invited' | 'left';
 export type TenantType = 'academy' | 'tutor';
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 export type SubmissionStatus = 'pending' | 'submitted' | 'graded';
+export type SubmissionQuality = 'none' | 'done' | 'excellent';
 export type PostCategory = 'notice' | 'free' | 'qna';
 export type Relation = 'father' | 'mother' | 'guardian';
 export type RewardSource = 'assignment_grade' | 'admin' | 'level_bonus' | 'homework_check';
@@ -129,6 +130,7 @@ export interface AssignmentSubmission {
   score: number | null;
   feedback_md: string | null;
   status: SubmissionStatus;
+  quality: SubmissionQuality;
 }
 
 export interface ProgressRecord {
@@ -337,5 +339,6 @@ export {
   ROLE_LABEL,
   ATTENDANCE_LABEL,
   SUBMISSION_LABEL,
+  SUBMISSION_QUALITY_LABEL,
   CATEGORY_LABEL,
 } from '@/shared/config/labels';

@@ -152,31 +152,53 @@ export async function upsertSessionAssignment(input: {
   });
 }
 
-// 과제 점검 토글 — 학생 제출 1건을 graded/pending 으로 전환하고 awardForGrade 로 XP 처리.
-// awardForGrade 가 source_ref=submissionId 로 idempotent 하므로 같은 토글을 여러 번
-// 눌러도 reward_events 가 중복되지 않는다. 회수 시 xpReward=0 으로 호출해 delta 적용.
-export async function setHomeworkChecked(args: {
+// 과제 점검 3단계 (안 햇음 / 햇음 / 아주 잘 햇음) — submission 의 quality + status 를 갱신하고
+// awardForGrade 로 XP delta 처리. awardForGrade 가 source_ref=submissionId 로 idempotent 라
+// 단계 사이를 자유롭게 오가도 reward_events 가 단일 row 만 갱신된다.
+//
+// - 'none': status='pending', xpReward=0 (회수)
+// - 'done': status='graded', xpReward=xpReward
+// - 'excellent': status='graded', xpReward=round(xpReward * 1.5)  ← 보너스
+export async function setHomeworkQuality(args: {
   submissionId: string;
   tenantId: string;
   studentUserId: string;
   studentFullName?: string | null;
-  checked: boolean;
+  quality: 'none' | 'done' | 'excellent';
   xpReward: number;
 }) {
   const client = sb();
-  if (args.checked) {
+
+  if (args.quality === 'none') {
     const { error } = await client
       .from('assignment_submissions')
-      .update({ status: 'graded' as const, submitted_at: new Date().toISOString() })
+      .update({
+        quality: 'none' as const,
+        status: 'pending' as const,
+        submitted_at: null,
+        score: null,
+        feedback_md: null,
+      })
       .eq('id', args.submissionId);
     if (error) throw error;
   } else {
     const { error } = await client
       .from('assignment_submissions')
-      .update({ status: 'pending' as const, submitted_at: null, score: null, feedback_md: null })
+      .update({
+        quality: args.quality,
+        status: 'graded' as const,
+        submitted_at: new Date().toISOString(),
+      })
       .eq('id', args.submissionId);
     if (error) throw error;
   }
+
+  const xp =
+    args.quality === 'excellent'
+      ? Math.round(args.xpReward * 1.5)
+      : args.quality === 'done'
+        ? args.xpReward
+        : 0;
 
   return awardForGrade({
     tenantId: args.tenantId,
@@ -184,7 +206,7 @@ export async function setHomeworkChecked(args: {
     studentFullName: args.studentFullName,
     submissionId: args.submissionId,
     score: 0,
-    xpReward: args.checked ? args.xpReward : 0,
+    xpReward: xp,
   });
 }
 

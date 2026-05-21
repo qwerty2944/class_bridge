@@ -12,20 +12,20 @@ import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
-import { Checkbox } from '@/shared/ui/checkbox';
 import { Skeleton } from '@/shared/ui/skeleton';
 import {
   fetchAssignment,
   fetchMySubmission,
   fetchSubmissions,
   gradeSubmission,
-  setHomeworkChecked,
+  setHomeworkQuality,
   submitAssignment,
   updateAssignment,
 } from '@/entities/assignment';
 import { awardForGrade } from '@/entities/reward';
 import { useCurrentTenant } from '@/features/tenant-switch';
-import { SUBMISSION_LABEL } from '@/shared/types/database';
+import { SUBMISSION_LABEL, SUBMISSION_QUALITY_LABEL, type SubmissionQuality } from '@/shared/types/database';
+import { cn } from '@/shared/lib/utils';
 
 export function AssignmentDetailClient({ assignmentId }: { assignmentId: string }) {
   const { has, userId, tenantId } = useCurrentTenant();
@@ -211,35 +211,34 @@ function TeacherGrading({
     qc.invalidateQueries({ queryKey: ['character'] });
   };
 
-  // 완료 체크박스 — 수업 출결 카드와 동일한 toggle. 점수 없이도 '확인' 가능.
-  const checkMutation = useMutation({
+  // 과제 점검 3단계 — '안 햇음 / 햇음 / 아주 잘 햇음'. 'excellent' 는 xpReward * 1.5 보너스.
+  const qualityMutation = useMutation({
     mutationFn: (args: {
       submissionId: string;
       studentId: string;
       studentFullName: string | null;
-      checked: boolean;
+      quality: SubmissionQuality;
     }) =>
-      setHomeworkChecked({
+      setHomeworkQuality({
         submissionId: args.submissionId,
         tenantId,
         studentUserId: args.studentId,
         studentFullName: args.studentFullName,
-        checked: args.checked,
+        quality: args.quality,
         xpReward,
       }),
     onSuccess: (r, vars) => {
       qc.invalidateQueries({ queryKey: ['submissions', assignmentId] });
       qc.invalidateQueries({ queryKey: ['character'] });
+      const label = SUBMISSION_QUALITY_LABEL[vars.quality];
       if (r && r.xpAdded !== 0) {
         toast.success(
           r.leveledUp
-            ? `과제 확인! +${r.xpAdded} XP — Lv.${r.oldLevel}→Lv.${r.newLevel}`
-            : r.xpAdded > 0
-              ? `과제 확인 — +${r.xpAdded} XP`
-              : `확인 취소 — ${r.xpAdded} XP`,
+            ? `${label}! ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP — Lv.${r.oldLevel}→Lv.${r.newLevel}`
+            : `${label} — ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP`,
         );
       } else {
-        toast.success(vars.checked ? '확인 처리됨' : '확인 취소됨');
+        toast.success(label);
       }
     },
     onError: (e) => toast.error((e as Error).message),
@@ -257,7 +256,6 @@ function TeacherGrading({
           <p className="text-sm text-muted-foreground text-center py-6">학생이 없습니다.</p>
         ) : (
           sQ.data?.map((s) => {
-            const approved = s.status === 'graded';
             const studentSubmitted = s.status === 'submitted';
             return (
             <div key={s.id} className="py-3 space-y-2">
@@ -269,62 +267,22 @@ function TeacherGrading({
                   <p className="text-sm font-medium truncate">{s.student?.full_name}</p>
                   <p className="text-xs text-muted-foreground truncate">{s.student?.email}</p>
                 </div>
-                {/* 상태 배지 — '제출' 은 학생이 직접 올림(검토 필요), '확인됨' 은 선생 승인 완료 */}
-                <Badge
-                  variant={approved ? 'default' : studentSubmitted ? 'outline' : 'secondary'}
-                  className={studentSubmitted ? 'border-amber-400 text-amber-700' : ''}
-                >
-                  {approved ? '확인됨' : studentSubmitted ? '학생 제출' : '미제출'}
-                </Badge>
-                {/* 액션 — 제출 상태별로 다른 컨트롤 */}
-                {studentSubmitted ? (
-                  // 학생이 이미 제출한 건 → '승인' 버튼 (XP 지급)
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      checkMutation.mutate({
-                        submissionId: s.id,
-                        studentId: s.student_id,
-                        studentFullName: s.student?.full_name ?? null,
-                        checked: true,
-                      })
-                    }
-                  >
-                    승인
-                  </Button>
-                ) : approved ? (
-                  // 이미 확인된 건 → 취소 가능
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      checkMutation.mutate({
-                        submissionId: s.id,
-                        studentId: s.student_id,
-                        studentFullName: s.student?.full_name ?? null,
-                        checked: false,
-                      })
-                    }
-                  >
-                    취소
-                  </Button>
-                ) : (
-                  // 미제출 → 선생님이 직접 '확인' 체크 가능
-                  <label className="flex cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs whitespace-nowrap">
-                    <Checkbox
-                      checked={false}
-                      onCheckedChange={(c) =>
-                        checkMutation.mutate({
-                          submissionId: s.id,
-                          studentId: s.student_id,
-                          studentFullName: s.student?.full_name ?? null,
-                          checked: c === true,
-                        })
-                      }
-                    />
-                    직접 확인
-                  </label>
+                {studentSubmitted && (
+                  <Badge variant="outline" className="border-amber-400 text-amber-700">
+                    학생 제출
+                  </Badge>
                 )}
+                <QualitySegmented
+                  value={s.quality}
+                  onChange={(q) =>
+                    qualityMutation.mutate({
+                      submissionId: s.id,
+                      studentId: s.student_id,
+                      studentFullName: s.student?.full_name ?? null,
+                      quality: q,
+                    })
+                  }
+                />
               </div>
               {s.content_md && (
                 <p className="text-sm whitespace-pre-wrap pl-11 text-muted-foreground">{s.content_md}</p>
@@ -366,5 +324,42 @@ function TeacherGrading({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// 과제 점검 3단계 segmented control — 수업 출결 / 지난 과제 점검 / 과제 상세 어디서든 재사용.
+const QUALITY_OPTIONS: { value: SubmissionQuality; label: string; tone: string }[] = [
+  { value: 'none', label: '안 햇음', tone: 'bg-muted text-foreground' },
+  { value: 'done', label: '햇음', tone: 'bg-emerald-500 text-white' },
+  { value: 'excellent', label: '아주 잘 햇음', tone: 'bg-indigo-600 text-white' },
+];
+
+export function QualitySegmented({
+  value,
+  onChange,
+}: {
+  value: SubmissionQuality;
+  onChange: (q: SubmissionQuality) => void;
+}) {
+  return (
+    <div className="inline-flex overflow-hidden rounded-md border bg-background text-xs whitespace-nowrap">
+      {QUALITY_OPTIONS.map((opt, i) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={cn(
+              'px-2.5 py-1 transition',
+              i > 0 && 'border-l',
+              active ? opt.tone : 'hover:bg-accent',
+            )}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
