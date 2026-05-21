@@ -95,8 +95,13 @@ export interface ClassSession {
   topic: string | null;
   content_md: string | null;
   share_token: string | null;
-  // 이 수업에서 점검한 과제(다른 수업에서 만들어진 과제) 참조 — 선택 사항.
-  reviewed_assignment_id: string | null;
+  created_at: string;
+}
+
+// 이 수업에서 점검한 (과거) 과제 묶음 — class_session_reviews 테이블.
+export interface ClassSessionReview {
+  session_id: string;
+  assignment_id: string;
   created_at: string;
 }
 

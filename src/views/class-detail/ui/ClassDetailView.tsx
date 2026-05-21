@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowLeft, CalendarDays, ClipboardList, Pencil, Share2 } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ClipboardList, Pencil, Plus, Share2, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
@@ -33,10 +33,16 @@ import {
   type SessionWithRefs,
 } from '@/entities/class-session';
 import {
-  fetchSessionAssignment,
+  addSessionReview,
+  createAssignment,
+  deleteAssignment,
+  fetchSessionAssignments,
+  fetchSessionReviewIds,
+  removeSessionReview,
   setSubmissionApproved,
   setSubmissionQuality,
   upsertSessionAssignment,
+  type SessionAssignment,
 } from '@/entities/assignment';
 import { HomeworkReviewPicker } from '@/features/homework-review';
 import { fetchSubjects } from '@/entities/subject';
@@ -64,9 +70,15 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
   const qc = useQueryClient();
   const sQ = useQuery({ queryKey: ['session', sessionId], queryFn: () => fetchClassSession(sessionId) });
   const aQ = useQuery({ queryKey: ['attendances', sessionId], queryFn: () => fetchAttendances(sessionId) });
-  const hwQ = useQuery({
-    queryKey: ['session-assignment', sessionId],
-    queryFn: () => fetchSessionAssignment(sessionId),
+  // 이 수업에서 만든 과제 (여러 개 가능 — source_session_id = sessionId).
+  const sessionAssignmentsQ = useQuery({
+    queryKey: ['session-assignments', sessionId],
+    queryFn: () => fetchSessionAssignments(sessionId),
+  });
+  // 이 수업에서 점검 중인 지난 과제 id 들 (junction).
+  const reviewIdsQ = useQuery({
+    queryKey: ['session-review-ids', sessionId],
+    queryFn: () => fetchSessionReviewIds(sessionId),
   });
 
   const upd = useMutation({
@@ -101,7 +113,7 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
       });
     },
     onSuccess: (r, vars) => {
-      qc.invalidateQueries({ queryKey: ['session-assignment', sessionId] });
+      qc.invalidateQueries({ queryKey: ['session-assignments', sessionId] });
       qc.invalidateQueries({ queryKey: ['character'] });
       const label = SUBMISSION_QUALITY_LABEL[vars.quality];
       if (r && r.xpAdded !== 0) {
@@ -142,7 +154,7 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
       });
     },
     onSuccess: (r, vars) => {
-      qc.invalidateQueries({ queryKey: ['session-assignment', sessionId] });
+      qc.invalidateQueries({ queryKey: ['session-assignments', sessionId] });
       qc.invalidateQueries({ queryKey: ['character'] });
       if (r && r.xpAdded !== 0) {
         toast.success(
@@ -158,7 +170,8 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
   if (sQ.isLoading || !sQ.data) return <Skeleton className="h-40" />;
   const s = sQ.data;
   const canEdit = has('director') || has('teacher');
-  const assignment = hwQ.data;
+  const sessionAssignments = sessionAssignmentsQ.data ?? [];
+  const reviewIds = reviewIdsQ.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -198,52 +211,13 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
         </CardContent>
       </Card>
 
+      {/* 출결 카드 — 출석 상태 + 사유만. 과제 점검은 아래 별도 카드. */}
       <Card>
         <CardHeader>
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                출결 · 과제 점검
-                {assignment && (
-                  <Badge variant="secondary" className="gap-1">
-                    <ClipboardList className="h-3.5 w-3.5" />
-                    과제 1건
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {canEdit ? '출결 상태와 과제 수행을 체크하세요.' : '내 출결·과제 상태'}
-              </CardDescription>
-            </div>
-            {assignment && (
-              <Link
-                href={`/assignments/${assignment.id}`}
-                className="rounded-md border bg-background px-3 py-1.5 text-xs hover:bg-accent transition"
-              >
-                과제 상세로 →
-              </Link>
-            )}
-          </div>
-          {assignment && (
-            <div className="mt-2 rounded-md border bg-muted/30 p-3 text-sm">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium">{assignment.title}</span>
-                {assignment.xp_reward > 0 && (
-                  <Badge variant="secondary">완료 시 +{assignment.xp_reward} XP</Badge>
-                )}
-                {assignment.due_at && (
-                  <span className="text-xs text-muted-foreground">
-                    마감: {new Date(assignment.due_at).toLocaleString('ko-KR')}
-                  </span>
-                )}
-              </div>
-              {assignment.description_md && (
-                <p className="mt-1.5 whitespace-pre-wrap text-xs text-muted-foreground">
-                  {assignment.description_md}
-                </p>
-              )}
-            </div>
-          )}
+          <CardTitle>출결</CardTitle>
+          <CardDescription>
+            {canEdit ? '학생별 출결 상태를 체크하세요.' : '내 출결 상태'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="divide-y">
           {aQ.isLoading ? (
@@ -251,135 +225,459 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
           ) : aQ.data?.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">학생이 없습니다.</p>
           ) : (
-            aQ.data?.map((a) => {
-              const sub = assignment?.submissions.find((x) => x.student_id === a.student_id) ?? null;
-              const studentSubmitted = sub?.status === 'submitted';
-              return (
-                <div key={a.id} className="flex items-center gap-3 py-3 flex-wrap">
-                  <Avatar className="h-9 w-9">
-                    <AvatarFallback>{a.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
-                  </Avatar>
-                  <Link
-                    href={`/students/${a.student_id}`}
-                    className="flex-1 min-w-0 hover:underline"
-                  >
-                    <p className="text-sm font-medium truncate">{a.student?.full_name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{a.student?.email}</p>
-                  </Link>
-                  {canEdit ? (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {assignment && sub && (
-                        <>
-                          {studentSubmitted && (
-                            <Badge variant="outline" className="border-amber-400 text-amber-700">
-                              학생 제출
-                            </Badge>
-                          )}
-                          {/* 승인 = 현재 quality 로 확정/해제 */}
-                          <Button
-                            size="sm"
-                            variant={sub.status === 'graded' ? 'default' : 'outline'}
-                            onClick={() =>
-                              approve.mutate({
-                                submissionId: sub.id,
-                                studentId: a.student_id,
-                                studentFullName: a.student?.full_name ?? null,
-                                approved: sub.status !== 'graded',
-                                quality: sub.quality,
-                                xpReward: assignment.xp_reward,
-                              })
-                            }
-                          >
-                            {sub.status === 'graded' ? '확정됨' : '승인'}
-                          </Button>
-                          <QualitySegmented
-                            value={sub.quality}
-                            onChange={(q) =>
-                              quality.mutate({
-                                submissionId: sub.id,
-                                studentId: a.student_id,
-                                studentFullName: a.student?.full_name ?? null,
-                                quality: q,
-                                xpReward: assignment.xp_reward,
-                              })
-                            }
-                          />
-                        </>
-                      )}
-                      <Select
-                        value={a.status}
-                        onValueChange={(v) =>
-                          upd.mutate({ id: a.id, patch: { status: v as AttendanceStatus } })
+            aQ.data?.map((a) => (
+              <div key={a.id} className="flex items-center gap-3 py-3 flex-wrap">
+                <Avatar className="h-9 w-9">
+                  <AvatarFallback>{a.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
+                </Avatar>
+                <Link
+                  href={`/students/${a.student_id}`}
+                  className="flex-1 min-w-0 hover:underline"
+                >
+                  <p className="text-sm font-medium truncate">{a.student?.full_name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{a.student?.email}</p>
+                </Link>
+                {canEdit ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Select
+                      value={a.status}
+                      onValueChange={(v) =>
+                        upd.mutate({ id: a.id, patch: { status: v as AttendanceStatus } })
+                      }
+                    >
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue>
+                          {(value) =>
+                            ATTENDANCE_LABEL[String(value ?? 'present') as AttendanceStatus] ?? '출석'
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STATUSES.map((st) => (
+                          <SelectItem key={st} value={st}>
+                            {ATTENDANCE_LABEL[st]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder="사유"
+                      defaultValue={a.note ?? ''}
+                      onBlur={(e) => {
+                        if ((e.target.value || '') !== (a.note ?? '')) {
+                          upd.mutate({ id: a.id, patch: { note: e.target.value } });
                         }
-                      >
-                        <SelectTrigger className="w-[120px]">
-                          <SelectValue>
-                            {(value) =>
-                              ATTENDANCE_LABEL[String(value ?? 'present') as AttendanceStatus] ?? '출석'
-                            }
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {STATUSES.map((st) => (
-                            <SelectItem key={st} value={st}>
-                              {ATTENDANCE_LABEL[st]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        placeholder="사유"
-                        defaultValue={a.note ?? ''}
-                        onBlur={(e) => {
-                          if ((e.target.value || '') !== (a.note ?? '')) {
-                            upd.mutate({ id: a.id, patch: { note: e.target.value } });
-                          }
-                        }}
-                        className="w-[160px]"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      {assignment && sub && (
-                        <Badge
-                          variant={
-                            sub.quality === 'excellent'
-                              ? 'default'
-                              : sub.quality === 'done'
-                                ? 'secondary'
-                                : studentSubmitted
-                                  ? 'outline'
-                                  : 'secondary'
-                          }
-                        >
-                          {sub.quality === 'none'
-                            ? studentSubmitted
-                              ? '제출함'
-                              : '안 햇음'
-                            : SUBMISSION_QUALITY_LABEL[sub.quality]}
-                        </Badge>
-                      )}
-                      <Badge variant={a.status === 'present' ? 'default' : 'secondary'}>
-                        {ATTENDANCE_LABEL[a.status]}
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-              );
-            })
+                      }}
+                      className="w-[160px]"
+                    />
+                  </div>
+                ) : (
+                  <Badge variant={a.status === 'present' ? 'default' : 'secondary'}>
+                    {ATTENDANCE_LABEL[a.status]}
+                  </Badge>
+                )}
+              </div>
+            ))
           )}
         </CardContent>
       </Card>
 
+      {/* 과제 점검 카드 — '이번 수업 과제' + '지난 과제 점검' 각각 + 로 추가. */}
       {canEdit && tenantId && (
-        <PastHomeworkCheck
-          orgId={s.organization_id}
-          currentSessionId={sessionId}
-          tenantId={tenantId}
-          defaultAssignmentId={s.reviewed_assignment_id ?? null}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-muted-foreground" /> 과제 점검
+            </CardTitle>
+            <CardDescription>
+              이번 수업에서 나가는 과제와, 지난 수업의 과제를 점검합니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <ThisSessionAssignments
+              sessionId={sessionId}
+              orgId={s.organization_id}
+              subjectId={s.subject_id}
+              teacherId={s.teacher_id}
+              tenantId={tenantId}
+              assignments={sessionAssignments}
+              onQuality={(args) => quality.mutate(args)}
+              onApprove={(args) => approve.mutate(args)}
+            />
+            <PastReviews
+              sessionId={sessionId}
+              orgId={s.organization_id}
+              tenantId={tenantId}
+              reviewIds={reviewIds}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/*
+        지난 과제 점검 (PastHomeworkCheck) 은 이제 위 카드의 'PastReviews' 가 대체.
+        남겨두던 카드는 일단 주석 처리.
+        {canEdit && tenantId && (
+          <PastHomeworkCheck
+            orgId={s.organization_id}
+            currentSessionId={sessionId}
+            tenantId={tenantId}
+            defaultAssignmentId={null}
+          />
+        )}
+      */}
+    </div>
+  );
+}
+
+/** 이번 수업에서 만든 과제들 — 여러 개 가능. 각 과제 카드 내 학생별 quality/승인 UI. */
+function ThisSessionAssignments({
+  sessionId,
+  orgId,
+  subjectId,
+  teacherId,
+  tenantId,
+  assignments,
+  onQuality,
+  onApprove,
+}: {
+  sessionId: string;
+  orgId: string;
+  subjectId: string | null;
+  teacherId: string | null;
+  tenantId: string;
+  assignments: SessionAssignment[];
+  onQuality: (args: {
+    submissionId: string;
+    studentId: string;
+    studentFullName: string | null;
+    quality: SubmissionQuality;
+    xpReward: number;
+  }) => void;
+  onApprove: (args: {
+    submissionId: string;
+    studentId: string;
+    studentFullName: string | null;
+    approved: boolean;
+    quality: SubmissionQuality;
+    xpReward: number;
+  }) => void;
+}) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+
+  const create = useMutation({
+    mutationFn: (input: {
+      title: string;
+      descriptionMd: string | null;
+      dueAt: string | null;
+      xpReward: number;
+    }) =>
+      createAssignment({
+        organization_id: orgId,
+        title: input.title,
+        description_md: input.descriptionMd,
+        due_at: input.dueAt,
+        xp_reward: input.xpReward,
+        subject_id: subjectId,
+        source_session_id: sessionId,
+        created_by: teacherId,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['session-assignments', sessionId] });
+      toast.success('과제 추가됨');
+      setShowForm(false);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const del = useMutation({
+    mutationFn: (id: string) => deleteAssignment(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['session-assignments', sessionId] });
+      toast.success('과제 삭제됨');
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">이번 수업에서 나가는 과제</h3>
+        <Button size="sm" variant="outline" onClick={() => setShowForm((v) => !v)}>
+          <Plus className="h-3.5 w-3.5" /> 과제 추가
+        </Button>
+      </div>
+
+      {assignments.length === 0 && !showForm && (
+        <p className="text-xs text-muted-foreground py-2">아직 과제가 없습니다.</p>
+      )}
+
+      {assignments.map((a) => (
+        <div key={a.id} className="rounded-lg border bg-card">
+          <div className="flex items-start gap-2 p-3 border-b bg-muted/30">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Link
+                  href={`/assignments/${a.id}`}
+                  className="font-medium text-sm hover:underline"
+                >
+                  {a.title}
+                </Link>
+                {a.xp_reward > 0 && (
+                  <Badge variant="secondary">완료 +{a.xp_reward} XP</Badge>
+                )}
+                {a.due_at && (
+                  <span className="text-xs text-muted-foreground">
+                    마감 {new Date(a.due_at).toLocaleString('ko-KR')}
+                  </span>
+                )}
+              </div>
+              {a.description_md && (
+                <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                  {a.description_md}
+                </p>
+              )}
+            </div>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => {
+                if (confirm('이 과제를 삭제할까요? 학생 제출 기록도 함께 사라집니다.'))
+                  del.mutate(a.id);
+              }}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="divide-y px-3">
+            {a.submissions.length === 0 ? (
+              <p className="py-3 text-xs text-muted-foreground text-center">학생 없음</p>
+            ) : (
+              a.submissions.map((sub) => {
+                const studentSubmitted = sub.status === 'submitted';
+                return (
+                  <div key={sub.id} className="flex items-center gap-3 py-2.5 flex-wrap">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>{sub.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
+                    </Avatar>
+                    <Link
+                      href={`/students/${sub.student_id}`}
+                      className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
+                    >
+                      {sub.student?.full_name}
+                    </Link>
+                    {studentSubmitted && (
+                      <Badge variant="outline" className="border-amber-400 text-amber-700">
+                        학생 제출
+                      </Badge>
+                    )}
+                    <Button
+                      size="sm"
+                      variant={sub.status === 'graded' ? 'default' : 'outline'}
+                      onClick={() =>
+                        onApprove({
+                          submissionId: sub.id,
+                          studentId: sub.student_id,
+                          studentFullName: sub.student?.full_name ?? null,
+                          approved: sub.status !== 'graded',
+                          quality: sub.quality,
+                          xpReward: a.xp_reward,
+                        })
+                      }
+                    >
+                      {sub.status === 'graded' ? '확정됨' : '승인'}
+                    </Button>
+                    <QualitySegmented
+                      value={sub.quality}
+                      onChange={(q) =>
+                        onQuality({
+                          submissionId: sub.id,
+                          studentId: sub.student_id,
+                          studentFullName: sub.student?.full_name ?? null,
+                          quality: q,
+                          xpReward: a.xp_reward,
+                        })
+                      }
+                    />
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ))}
+
+      {showForm && (
+        <NewAssignmentInline
+          onSave={(payload) => create.mutate(payload)}
+          onCancel={() => setShowForm(false)}
+          busy={create.isPending}
         />
       )}
+
+      <input type="hidden" data-tenant-id={tenantId} />
+    </section>
+  );
+}
+
+function NewAssignmentInline({
+  onSave,
+  onCancel,
+  busy,
+}: {
+  onSave: (input: {
+    title: string;
+    descriptionMd: string | null;
+    dueAt: string | null;
+    xpReward: number;
+  }) => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [due, setDue] = useState('');
+  const [xp, setXp] = useState('');
+  return (
+    <div className="rounded-lg border border-dashed bg-muted/20 p-3 space-y-2">
+      <div>
+        <Label>과제 제목</Label>
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 교재 p.30 ~ 35" />
+      </div>
+      <div>
+        <Label>설명</Label>
+        <Textarea rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label>마감</Label>
+          <Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} />
+        </div>
+        <div>
+          <Label>완료 XP</Label>
+          <Input type="number" min={0} value={xp} onChange={(e) => setXp(e.target.value)} />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-1">
+        <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>취소</Button>
+        <Button
+          size="sm"
+          disabled={busy || !title.trim()}
+          onClick={() =>
+            onSave({
+              title: title.trim(),
+              descriptionMd: desc.trim() || null,
+              dueAt: due ? new Date(due).toISOString() : null,
+              xpReward: xp ? Math.max(0, Math.round(Number(xp))) : 0,
+            })
+          }
+        >
+          추가
+        </Button>
+      </div>
     </div>
+  );
+}
+
+/** 지난 과제 점검 — junction 으로 묶인 여러 과거 과제. + 로 계속 추가 가능. */
+function PastReviews({
+  sessionId,
+  orgId,
+  tenantId,
+  reviewIds,
+}: {
+  sessionId: string;
+  orgId: string;
+  tenantId: string;
+  reviewIds: string[];
+}) {
+  const qc = useQueryClient();
+  // 신규 빈 picker 추가 — 사용자가 어떤 과제를 고를 때까지 잠시 클라이언트 only.
+  const [drafts, setDrafts] = useState<{ key: string; assignmentId: string | null }[]>([]);
+
+  const addRow = () => {
+    setDrafts((d) => [...d, { key: crypto.randomUUID(), assignmentId: null }]);
+  };
+
+  const removeRow = (key: string) => {
+    setDrafts((d) => d.filter((x) => x.key !== key));
+  };
+
+  const remove = useMutation({
+    mutationFn: (assignmentId: string) => removeSessionReview(sessionId, assignmentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['session-review-ids', sessionId] });
+      toast.success('점검 해제됨');
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const add = useMutation({
+    mutationFn: (assignmentId: string) => addSessionReview(sessionId, assignmentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['session-review-ids', sessionId] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">지난 과제 점검</h3>
+        <Button size="sm" variant="outline" onClick={addRow}>
+          <Plus className="h-3.5 w-3.5" /> 과제 추가
+        </Button>
+      </div>
+
+      {reviewIds.length === 0 && drafts.length === 0 && (
+        <p className="text-xs text-muted-foreground py-2">점검할 지난 과제를 추가하세요.</p>
+      )}
+
+      {reviewIds.map((aid) => (
+        <div key={aid} className="rounded-lg border bg-card p-3 relative">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="absolute top-2 right-2"
+            onClick={() => remove.mutate(aid)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <HomeworkReviewPicker
+            orgId={orgId}
+            tenantId={tenantId}
+            currentSessionId={sessionId}
+            value={aid}
+          />
+        </div>
+      ))}
+
+      {drafts.map((d) => (
+        <div key={d.key} className="rounded-lg border border-dashed bg-muted/20 p-3 relative">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="absolute top-2 right-2"
+            onClick={() => removeRow(d.key)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <HomeworkReviewPicker
+            orgId={orgId}
+            tenantId={tenantId}
+            currentSessionId={sessionId}
+            value={d.assignmentId}
+            onChange={(aid) => {
+              if (aid) {
+                add.mutate(aid);
+                removeRow(d.key);
+              }
+            }}
+          />
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -471,12 +769,6 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
     enabled: !!tenantId,
     queryFn: () => fetchSubjects(tenantId!),
   });
-  // 기존 연결 과제 prefill — open 시 한 번만 로드.
-  const hwQ = useQuery({
-    queryKey: ['session-assignment', session.id],
-    queryFn: () => fetchSessionAssignment(session.id),
-  });
-
   const [form, setForm] = useState({
     session_date: session.session_date,
     start_time: session.start_time ?? '',
@@ -484,30 +776,7 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
     topic: session.topic ?? '',
     subject_id: session.subject_id,
     content_md: session.content_md ?? '',
-    add_homework: false,
-    hw_title: '',
-    hw_description: '',
-    hw_due_at: '',
-    hw_xp: '',
-    review_homework: !!session.reviewed_assignment_id,
-    reviewed_assignment_id: session.reviewed_assignment_id ?? null,
   });
-  const [hwLoaded, setHwLoaded] = useState(false);
-  // hwQ 의 결과로 폼을 한 번 채워준다 (set-state-in-effect 회피 위해 isFetched 후 lazy init).
-  if (hwQ.isFetched && !hwLoaded) {
-    const a = hwQ.data;
-    setHwLoaded(true);
-    if (a) {
-      setForm((f) => ({
-        ...f,
-        add_homework: true,
-        hw_title: a.title,
-        hw_description: a.description_md ?? '',
-        hw_due_at: toDateTimeLocal(a.due_at),
-        hw_xp: a.xp_reward ? String(a.xp_reward) : '',
-      }));
-    }
-  }
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -521,25 +790,8 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
         topic: form.topic || null,
         subject_id: form.subject_id,
         content_md: form.content_md || null,
-        reviewed_assignment_id: form.review_homework ? form.reviewed_assignment_id : null,
-      });
-      const wantHomework = form.add_homework && form.hw_title.trim().length > 0;
-      await upsertSessionAssignment({
-        sessionId: session.id,
-        organizationId: session.organization_id,
-        subjectId: form.subject_id,
-        createdBy: session.teacher_id,
-        assignment: wantHomework
-          ? {
-              title: form.hw_title.trim(),
-              descriptionMd: form.hw_description.trim() || null,
-              dueAt: form.hw_due_at ? new Date(form.hw_due_at).toISOString() : null,
-              xpReward: form.hw_xp ? Math.max(0, Math.round(Number(form.hw_xp))) : 0,
-            }
-          : null,
       });
       qc.invalidateQueries({ queryKey: ['session', session.id] });
-      qc.invalidateQueries({ queryKey: ['session-assignment', session.id] });
       qc.invalidateQueries({ queryKey: ['class-sessions', session.organization_id] });
       toast.success('수업 수정됨');
       onDone();
@@ -623,90 +875,12 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
             placeholder="오늘 다룬 내용"
           />
         </div>
-        <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-            <Checkbox
-              checked={form.add_homework}
-              onCheckedChange={(c) => setForm({ ...form, add_homework: c === true })}
-            />
-            이 수업에 과제 추가
-          </label>
-          {form.add_homework && (
-            <div className="space-y-3 pl-1">
-              <div>
-                <Label>과제 제목</Label>
-                <Input
-                  value={form.hw_title}
-                  onChange={(e) => setForm({ ...form, hw_title: e.target.value })}
-                  placeholder="예: 교재 p.120 ~ 122 문제 풀이"
-                />
-              </div>
-              <div>
-                <Label>과제 설명</Label>
-                <Textarea
-                  rows={2}
-                  value={form.hw_description}
-                  onChange={(e) => setForm({ ...form, hw_description: e.target.value })}
-                  placeholder="자세한 안내 (선택)"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>마감일</Label>
-                  <Input
-                    type="datetime-local"
-                    value={form.hw_due_at}
-                    onChange={(e) => setForm({ ...form, hw_due_at: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>완료 시 XP</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.hw_xp}
-                    onChange={(e) => setForm({ ...form, hw_xp: e.target.value })}
-                    placeholder="예: 20"
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                토글을 끄면 연결된 과제가 삭제됩니다.
-              </p>
-            </div>
-          )}
-        </div>
-        {tenantId && (
-          <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-              <Checkbox
-                checked={form.review_homework}
-                onCheckedChange={(c) =>
-                  setForm({
-                    ...form,
-                    review_homework: c === true,
-                    reviewed_assignment_id: c === true ? form.reviewed_assignment_id : null,
-                  })
-                }
-              />
-              과제 점검 추가
-            </label>
-            {form.review_homework && (
-              <div className="pl-1">
-                <HomeworkReviewPicker
-                  orgId={session.organization_id}
-                  tenantId={tenantId}
-                  currentSessionId={session.id}
-                  value={form.reviewed_assignment_id}
-                  onChange={(aid) => setForm({ ...form, reviewed_assignment_id: aid })}
-                />
-              </div>
-            )}
-          </div>
-        )}
+        <p className="rounded-md border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
+          이번 수업의 과제·지난 과제 점검은 수업 상세 화면의 ‘과제 점검’ 카드에서 +로 추가/관리합니다.
+        </p>
       </div>
       <DialogFooter>
-        <Button disabled={busy || !hwQ.isFetched} onClick={submit}>
+        <Button disabled={busy} onClick={submit}>
           저장
         </Button>
       </DialogFooter>

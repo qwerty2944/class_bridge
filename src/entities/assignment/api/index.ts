@@ -66,15 +66,84 @@ export async function createAssignment(input: Partial<Assignment> & { organizati
   return data as Assignment;
 }
 
-// 수업에 연결된 과제 + 학생 제출을 한 번에 가져온다.
-// 출결 카드 / 지난 과제 점검 카드 모두 이 결과를 공유.
-export async function fetchSessionAssignment(sessionId: string): Promise<SessionAssignment | null> {
-  const { data } = await sb()
+// 수업에 연결된 과제 + 학생 제출을 한 번에 가져온다. 한 수업이 여러 과제를 가질 수 있어 배열 반환.
+export async function fetchSessionAssignments(sessionId: string): Promise<SessionAssignment[]> {
+  const { data, error } = await sb()
     .from('assignments')
     .select('*, subject:subjects(*), submissions:assignment_submissions(*, student:profiles(*))')
     .eq('source_session_id', sessionId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as SessionAssignment[];
+}
+
+// 단일 과제 + 제출 조회 (HomeworkReviewPicker 가 특정 과제를 보여줄 때 사용).
+export async function fetchAssignmentWithSubmissions(
+  assignmentId: string,
+): Promise<SessionAssignment | null> {
+  const { data } = await sb()
+    .from('assignments')
+    .select('*, subject:subjects(*), submissions:assignment_submissions(*, student:profiles(*))')
+    .eq('id', assignmentId)
     .maybeSingle();
   return (data as SessionAssignment) ?? null;
+}
+
+// 이 수업에서 점검한 과거 과제 id 목록 (class_session_reviews junction).
+export async function fetchSessionReviewIds(sessionId: string): Promise<string[]> {
+  const { data, error } = await sb()
+    .from('class_session_reviews')
+    .select('assignment_id')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return ((data ?? []) as { assignment_id: string }[]).map((r) => r.assignment_id);
+}
+
+export async function addSessionReview(sessionId: string, assignmentId: string) {
+  const { error } = await sb()
+    .from('class_session_reviews')
+    .insert({ session_id: sessionId, assignment_id: assignmentId });
+  // 중복 (PK 충돌) 은 무시.
+  if (error && !/duplicate/i.test(error.message)) throw error;
+}
+
+export async function removeSessionReview(sessionId: string, assignmentId: string) {
+  const { error } = await sb()
+    .from('class_session_reviews')
+    .delete()
+    .eq('session_id', sessionId)
+    .eq('assignment_id', assignmentId);
+  if (error) throw error;
+}
+
+export async function setSessionReviews(sessionId: string, assignmentIds: string[]) {
+  if (assignmentIds.length === 0) {
+    await sb().from('class_session_reviews').delete().eq('session_id', sessionId);
+    return;
+  }
+  // 차이만 적용 — 현재 목록 가져와서 add/remove.
+  const current = await fetchSessionReviewIds(sessionId);
+  const toAdd = assignmentIds.filter((id) => !current.includes(id));
+  const toRemove = current.filter((id) => !assignmentIds.includes(id));
+  if (toAdd.length) {
+    await sb()
+      .from('class_session_reviews')
+      .insert(toAdd.map((aid) => ({ session_id: sessionId, assignment_id: aid })));
+  }
+  if (toRemove.length) {
+    await sb()
+      .from('class_session_reviews')
+      .delete()
+      .eq('session_id', sessionId)
+      .in('assignment_id', toRemove);
+  }
+}
+
+// 호환 — 단일 과제 조회 (다중 중 첫 번째 반환). 향후 호출처를 fetchSessionAssignments 로 옮길 것.
+export async function fetchSessionAssignment(sessionId: string): Promise<SessionAssignment | null> {
+  const list = await fetchSessionAssignments(sessionId);
+  return list[0] ?? null;
 }
 
 // 여러 수업에 연결된 과제 묶음 조회 (PastHomeworkCheck Select 옵션 필터링용).

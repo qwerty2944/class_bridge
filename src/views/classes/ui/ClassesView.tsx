@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { CalendarDays, Plus } from 'lucide-react';
+import { CalendarDays, Plus, X } from 'lucide-react';
 import { Card, CardContent } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Skeleton } from '@/shared/ui/skeleton';
@@ -24,7 +24,7 @@ import {
 } from '@/shared/ui/dialog';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { createClassSession, fetchClassSessionsByOrgs } from '@/entities/class-session';
-import { upsertSessionAssignment } from '@/entities/assignment';
+import { addSessionReview, createAssignment } from '@/entities/assignment';
 import { fetchOrganizations, fetchOrganizationsForUser } from '@/entities/organization';
 import type { OrgWithSubject } from '@/entities/organization';
 import { fetchSubjects } from '@/entities/subject';
@@ -166,6 +166,13 @@ function NewSessionDialog({
     enabled: !!tenantId && open,
     queryFn: () => fetchSubjects(tenantId!),
   });
+  type NewAssignmentDraft = {
+    key: string;
+    title: string;
+    description: string;
+    due_at: string;
+    xp: string;
+  };
   const [form, setForm] = useState({
     organization_id: defaultOrgId,
     session_date: new Date().toISOString().slice(0, 10),
@@ -174,14 +181,12 @@ function NewSessionDialog({
     topic: '',
     subject_id: null as string | null,
     content_md: '',
-    add_homework: false,
-    hw_title: '',
-    hw_description: '',
-    hw_due_at: '',
-    hw_xp: '',
-    review_homework: false,
-    reviewed_assignment_id: null as string | null,
   });
+  // '이번 수업에서 나가는 과제' — 여러 개 가능.
+  const [newAssignments, setNewAssignments] = useState<NewAssignmentDraft[]>([]);
+  // '지난 과제 점검' — assignment id 배열. picker 에서 고른 순간 즉시 들어옴.
+  const [reviewIds, setReviewIds] = useState<string[]>([]);
+  const [reviewDraftCount, setReviewDraftCount] = useState(0); // 빈 picker 슬롯 개수
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -197,29 +202,27 @@ function NewSessionDialog({
         subject_id: form.subject_id,
         content_md: form.content_md || null,
         teacher_id: userId,
-        reviewed_assignment_id: form.review_homework ? form.reviewed_assignment_id : null,
       });
-      const wantHomework = form.add_homework && form.hw_title.trim().length > 0;
-      await upsertSessionAssignment({
-        sessionId: created.id,
-        organizationId: form.organization_id,
-        subjectId: form.subject_id,
-        createdBy: userId,
-        assignment: wantHomework
-          ? {
-              title: form.hw_title.trim(),
-              descriptionMd: form.hw_description.trim() || null,
-              dueAt: form.hw_due_at ? new Date(form.hw_due_at).toISOString() : null,
-              xpReward: form.hw_xp ? Math.max(0, Math.round(Number(form.hw_xp))) : 0,
-            }
-          : null,
-      });
+      // 새 과제들 생성
+      for (const a of newAssignments) {
+        if (!a.title.trim()) continue;
+        await createAssignment({
+          organization_id: form.organization_id,
+          title: a.title.trim(),
+          description_md: a.description.trim() || null,
+          due_at: a.due_at ? new Date(a.due_at).toISOString() : null,
+          xp_reward: a.xp ? Math.max(0, Math.round(Number(a.xp))) : 0,
+          subject_id: form.subject_id,
+          source_session_id: created.id,
+          created_by: userId,
+        });
+      }
+      // 지난 과제 점검 링크
+      for (const aid of reviewIds) {
+        await addSessionReview(created.id, aid);
+      }
       qc.invalidateQueries({ queryKey: ['class-sessions-multi'] });
-      toast.success(
-        wantHomework
-          ? '수업 + 과제 생성됨 (학생 출결·제출 자동 생성)'
-          : '수업 생성됨 (학생 출결 자동 생성)',
-      );
+      toast.success('수업 생성됨 (학생 출결·제출 자동 생성)');
       setOpen(false);
     } catch (e) {
       toast.error((e as Error).message);
@@ -329,84 +332,162 @@ function NewSessionDialog({
               placeholder="오늘 다룬 내용"
             />
           </div>
+          {/* 이번 수업에서 나가는 과제 — + 로 여러 개 추가 가능. */}
           <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-              <Checkbox
-                checked={form.add_homework}
-                onCheckedChange={(c) => setForm({ ...form, add_homework: c === true })}
-              />
-              이 수업에 과제 추가
-            </label>
-            {form.add_homework && (
-              <div className="space-y-3 pl-1">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">이번 수업에서 나가는 과제</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setNewAssignments((a) => [
+                    ...a,
+                    { key: crypto.randomUUID(), title: '', description: '', due_at: '', xp: '' },
+                  ])
+                }
+              >
+                <Plus className="h-3.5 w-3.5" /> 과제 추가
+              </Button>
+            </div>
+            {newAssignments.length === 0 && (
+              <p className="text-xs text-muted-foreground">+ 로 과제를 한 개 이상 추가하세요.</p>
+            )}
+            {newAssignments.map((a, idx) => (
+              <div key={a.key} className="rounded-md border bg-background p-3 space-y-2 relative">
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  className="absolute top-1 right-1"
+                  onClick={() =>
+                    setNewAssignments((arr) => arr.filter((x) => x.key !== a.key))
+                  }
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+                <p className="text-xs text-muted-foreground">과제 #{idx + 1}</p>
                 <div>
                   <Label>과제 제목</Label>
                   <Input
-                    value={form.hw_title}
-                    onChange={(e) => setForm({ ...form, hw_title: e.target.value })}
-                    placeholder="예: 교재 p.120 ~ 122 문제 풀이"
+                    value={a.title}
+                    onChange={(e) =>
+                      setNewAssignments((arr) =>
+                        arr.map((x) => (x.key === a.key ? { ...x, title: e.target.value } : x)),
+                      )
+                    }
+                    placeholder="예: 교재 p.120 ~ 122"
                   />
                 </div>
                 <div>
-                  <Label>과제 설명</Label>
+                  <Label>설명</Label>
                   <Textarea
                     rows={2}
-                    value={form.hw_description}
-                    onChange={(e) => setForm({ ...form, hw_description: e.target.value })}
-                    placeholder="자세한 안내 (선택)"
+                    value={a.description}
+                    onChange={(e) =>
+                      setNewAssignments((arr) =>
+                        arr.map((x) =>
+                          x.key === a.key ? { ...x, description: e.target.value } : x,
+                        ),
+                      )
+                    }
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label>마감일</Label>
+                    <Label>마감</Label>
                     <Input
                       type="datetime-local"
-                      value={form.hw_due_at}
-                      onChange={(e) => setForm({ ...form, hw_due_at: e.target.value })}
+                      value={a.due_at}
+                      onChange={(e) =>
+                        setNewAssignments((arr) =>
+                          arr.map((x) => (x.key === a.key ? { ...x, due_at: e.target.value } : x)),
+                        )
+                      }
                     />
                   </div>
                   <div>
-                    <Label>완료 시 XP</Label>
+                    <Label>완료 XP</Label>
                     <Input
                       type="number"
                       min={0}
-                      value={form.hw_xp}
-                      onChange={(e) => setForm({ ...form, hw_xp: e.target.value })}
-                      placeholder="예: 20"
+                      value={a.xp}
+                      onChange={(e) =>
+                        setNewAssignments((arr) =>
+                          arr.map((x) => (x.key === a.key ? { ...x, xp: e.target.value } : x)),
+                        )
+                      }
                     />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  과제 목록에 자동 등록되고, 수업 상세에서 학생별로 점검할 수 있습니다.
-                </p>
               </div>
-            )}
+            ))}
           </div>
+
+          {/* 지난 과제 점검 — + 로 picker 여러 개 추가, 고른 즉시 array 에 들어감. */}
           {tenantId && form.organization_id && (
             <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-                <Checkbox
-                  checked={form.review_homework}
-                  onCheckedChange={(c) =>
-                    setForm({
-                      ...form,
-                      review_homework: c === true,
-                      reviewed_assignment_id: c === true ? form.reviewed_assignment_id : null,
-                    })
-                  }
-                />
-                과제 점검 추가
-              </label>
-              {form.review_homework && (
-                <div className="pl-1">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">지난 과제 점검</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setReviewDraftCount((n) => n + 1)}
+                >
+                  <Plus className="h-3.5 w-3.5" /> 과제 추가
+                </Button>
+              </div>
+              {reviewIds.length === 0 && reviewDraftCount === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  + 로 점검할 지난 수업의 과제를 골라 보세요.
+                </p>
+              )}
+              {reviewIds.map((aid) => (
+                <div key={aid} className="rounded-md border bg-background p-3 relative">
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    className="absolute top-1 right-1"
+                    onClick={() => setReviewIds((arr) => arr.filter((x) => x !== aid))}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                   <HomeworkReviewPicker
                     orgId={form.organization_id}
                     tenantId={tenantId}
-                    value={form.reviewed_assignment_id}
-                    onChange={(aid) => setForm({ ...form, reviewed_assignment_id: aid })}
+                    value={aid}
                   />
                 </div>
-              )}
+              ))}
+              {Array.from({ length: reviewDraftCount }).map((_, idx) => (
+                <div
+                  key={`draft-${idx}`}
+                  className="rounded-md border border-dashed bg-background p-3 relative"
+                >
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    className="absolute top-1 right-1"
+                    onClick={() => setReviewDraftCount((n) => Math.max(0, n - 1))}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                  <HomeworkReviewPicker
+                    orgId={form.organization_id}
+                    tenantId={tenantId}
+                    value={null}
+                    onChange={(aid) => {
+                      if (aid && !reviewIds.includes(aid)) {
+                        setReviewIds((arr) => [...arr, aid]);
+                        setReviewDraftCount((n) => Math.max(0, n - 1));
+                      }
+                    }}
+                  />
+                </div>
+              ))}
             </div>
           )}
         </div>
