@@ -95,6 +95,8 @@ export interface ClassSession {
   topic: string | null;
   content_md: string | null;
   share_token: string | null;
+  // 이 수업에서 점검한 과제(다른 수업에서 만들어진 과제) 참조 — 선택 사항.
+  reviewed_assignment_id: string | null;
   created_at: string;
 }
 

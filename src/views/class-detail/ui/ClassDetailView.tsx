@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { ArrowLeft, CalendarDays, ClipboardList, Pencil, Share2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
@@ -34,12 +34,11 @@ import {
 } from '@/entities/class-session';
 import {
   fetchSessionAssignment,
-  fetchSessionAssignmentMap,
   setSubmissionApproved,
   setSubmissionQuality,
   upsertSessionAssignment,
-  type SessionAssignment,
 } from '@/entities/assignment';
+import { HomeworkReviewPicker } from '@/features/homework-review';
 import { fetchSubjects } from '@/entities/subject';
 import { RichContent, RichTextEditor } from '@/features/rich-text-editor';
 import { useCurrentTenant } from '@/features/tenant-switch';
@@ -260,10 +259,13 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                   <Avatar className="h-9 w-9">
                     <AvatarFallback>{a.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
                   </Avatar>
-                  <div className="flex-1 min-w-0">
+                  <Link
+                    href={`/students/${a.student_id}`}
+                    className="flex-1 min-w-0 hover:underline"
+                  >
                     <p className="text-sm font-medium truncate">{a.student?.full_name}</p>
                     <p className="text-xs text-muted-foreground truncate">{a.student?.email}</p>
-                  </div>
+                  </Link>
                   {canEdit ? (
                     <div className="flex items-center gap-2 flex-wrap">
                       {assignment && sub && (
@@ -370,7 +372,12 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
       </Card>
 
       {canEdit && tenantId && (
-        <PastHomeworkCheck orgId={s.organization_id} currentSessionId={sessionId} tenantId={tenantId} />
+        <PastHomeworkCheck
+          orgId={s.organization_id}
+          currentSessionId={sessionId}
+          tenantId={tenantId}
+          defaultAssignmentId={s.reviewed_assignment_id ?? null}
+        />
       )}
     </div>
   );
@@ -381,214 +388,36 @@ function PastHomeworkCheck({
   orgId,
   currentSessionId,
   tenantId,
+  defaultAssignmentId,
 }: {
   orgId: string;
   currentSessionId: string;
   tenantId: string;
+  defaultAssignmentId: string | null;
 }) {
-  const qc = useQueryClient();
-  const [picked, setPicked] = useState('');
-
-  const sessionsQ = useQuery({
-    queryKey: ['class-sessions', orgId],
-    queryFn: () => fetchClassSessions(orgId),
-  });
-  const others = useMemo(
-    () => (sessionsQ.data ?? []).filter((x) => x.id !== currentSessionId),
-    [sessionsQ.data, currentSessionId],
-  );
-
-  // 과제가 있는 수업만 PastHomeworkCheck 의 옵션으로 노출 (N+1 회피 위해 묶음 조회).
-  const mapQ = useQuery({
-    queryKey: ['session-assignment-map', orgId, others.map((o) => o.id).join(',')],
-    enabled: others.length > 0,
-    queryFn: () => fetchSessionAssignmentMap(others.map((o) => o.id)),
-  });
-  const eligible = useMemo(
-    () => others.filter((x) => mapQ.data && mapQ.data[x.id]),
-    [others, mapQ.data],
-  );
-
-  const selectedId = picked || eligible[0]?.id || '';
-  const selected = eligible.find((x) => x.id === selectedId) ?? null;
-
-  const hwQ = useQuery({
-    queryKey: ['session-assignment', selectedId],
-    enabled: !!selectedId,
-    queryFn: () => fetchSessionAssignment(selectedId),
-  });
-
-  const xpReward = hwQ.data?.xp_reward ?? 0;
-  const quality = useMutation({
-    mutationFn: async (args: {
-      submissionId: string;
-      studentId: string;
-      studentFullName: string | null;
-      quality: SubmissionQuality;
-    }) =>
-      setSubmissionQuality({
-        submissionId: args.submissionId,
-        tenantId,
-        studentUserId: args.studentId,
-        studentFullName: args.studentFullName,
-        quality: args.quality,
-        xpReward,
-      }),
-    onSuccess: (r, vars) => {
-      qc.invalidateQueries({ queryKey: ['session-assignment', selectedId] });
-      qc.invalidateQueries({ queryKey: ['character'] });
-      const label = SUBMISSION_QUALITY_LABEL[vars.quality];
-      if (r && r.xpAdded !== 0) {
-        toast.success(`${label} — ${r.xpAdded > 0 ? '+' : ''}${r.xpAdded} XP`);
-      } else {
-        toast.success(label);
-      }
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
-  const approve = useMutation({
-    mutationFn: async (args: {
-      submissionId: string;
-      studentId: string;
-      studentFullName: string | null;
-      approved: boolean;
-      quality: SubmissionQuality;
-    }) =>
-      setSubmissionApproved({
-        submissionId: args.submissionId,
-        tenantId,
-        studentUserId: args.studentId,
-        studentFullName: args.studentFullName,
-        approved: args.approved,
-        quality: args.quality,
-        xpReward,
-      }),
-    onSuccess: (r, vars) => {
-      qc.invalidateQueries({ queryKey: ['session-assignment', selectedId] });
-      qc.invalidateQueries({ queryKey: ['character'] });
-      if (r && r.xpAdded !== 0) {
-        toast.success(
-          vars.approved ? `확정 — +${r.xpAdded} XP` : `확정 해제 — ${r.xpAdded} XP`,
-        );
-      } else {
-        toast.success(vars.approved ? '확정됨' : '확정 해제됨');
-      }
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
-  if (!sessionsQ.isLoading && eligible.length === 0) return null;
-
+  // 수업이 점검 대상을 명시(reviewed_assignment_id) 한 경우 그 과제를 기본 선택.
+  const [picked, setPicked] = useState<string | null>(defaultAssignmentId);
   return (
     <Card>
       <CardHeader>
         <CardTitle>지난 과제 점검</CardTitle>
-        <CardDescription>이전 수업의 과제를 불러와 학생별로 점검합니다.</CardDescription>
+        <CardDescription>
+          {defaultAssignmentId
+            ? '이 수업에서 점검한 과제 — 다른 수업의 과제로 바꿔 점검할 수도 있습니다.'
+            : '이전 수업의 과제를 불러와 학생별로 점검합니다.'}
+        </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <Select value={selectedId} onValueChange={(v) => v && setPicked(v)}>
-          <SelectTrigger>
-            <SelectValue>
-              {(value) => {
-                const x = eligible.find((o) => o.id === String(value ?? ''));
-                return x
-                  ? `${new Date(x.session_date).toLocaleDateString('ko-KR')} · ${x.topic ?? '수업'}`
-                  : '수업 선택';
-              }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {eligible.map((x) => (
-              <SelectItem key={x.id} value={x.id}>
-                {new Date(x.session_date).toLocaleDateString('ko-KR')} · {x.topic ?? '수업'}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {selected && hwQ.data && (
-          <div className="rounded-md border bg-muted/30 p-3 text-sm">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium">{hwQ.data.title}</span>
-              {hwQ.data.xp_reward > 0 && (
-                <Badge variant="secondary">완료 시 +{hwQ.data.xp_reward} XP</Badge>
-              )}
-              {hwQ.data.due_at && (
-                <span className="text-xs text-muted-foreground">
-                  마감: {new Date(hwQ.data.due_at).toLocaleString('ko-KR')}
-                </span>
-              )}
-            </div>
-            {hwQ.data.description_md && (
-              <p className="mt-1.5 whitespace-pre-wrap text-xs text-muted-foreground">
-                {hwQ.data.description_md}
-              </p>
-            )}
-          </div>
-        )}
-
-        <div className="divide-y">
-          {hwQ.isLoading ? (
-            <Skeleton className="h-24" />
-          ) : !hwQ.data || hwQ.data.submissions.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">학생이 없습니다.</p>
-          ) : (
-            renderSubmissions(
-              hwQ.data,
-              (sub, q) =>
-                quality.mutate({
-                  submissionId: sub.id,
-                  studentId: sub.student_id,
-                  studentFullName: sub.student?.full_name ?? null,
-                  quality: q,
-                }),
-              (sub, approved) =>
-                approve.mutate({
-                  submissionId: sub.id,
-                  studentId: sub.student_id,
-                  studentFullName: sub.student?.full_name ?? null,
-                  approved,
-                  quality: sub.quality,
-                }),
-            )
-          )}
-        </div>
+      <CardContent>
+        <HomeworkReviewPicker
+          orgId={orgId}
+          tenantId={tenantId}
+          currentSessionId={currentSessionId}
+          value={picked}
+          onChange={(aid) => setPicked(aid)}
+        />
       </CardContent>
     </Card>
   );
-}
-
-function renderSubmissions(
-  assignment: SessionAssignment,
-  onQuality: (sub: SessionAssignment['submissions'][number], q: SubmissionQuality) => void,
-  onApprove: (sub: SessionAssignment['submissions'][number], approved: boolean) => void,
-) {
-  return assignment.submissions.map((sub) => {
-    const studentSubmitted = sub.status === 'submitted';
-    const isApproved = sub.status === 'graded';
-    return (
-      <div key={sub.id} className="flex items-center gap-3 py-2.5 flex-wrap">
-        <Avatar className="h-8 w-8">
-          <AvatarFallback>{sub.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
-        </Avatar>
-        <p className="min-w-0 flex-1 truncate text-sm font-medium">{sub.student?.full_name}</p>
-        {studentSubmitted && (
-          <Badge variant="outline" className="border-amber-400 text-amber-700">
-            학생 제출
-          </Badge>
-        )}
-        <Button
-          size="sm"
-          variant={isApproved ? 'default' : 'outline'}
-          onClick={() => onApprove(sub, !isApproved)}
-        >
-          {isApproved ? '확정됨' : '승인'}
-        </Button>
-        <QualitySegmented value={sub.quality} onChange={(q) => onQuality(sub, q)} />
-      </div>
-    );
-  });
 }
 
 function ShareSessionButton({ session }: { session: SessionWithRefs }) {
@@ -660,6 +489,8 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
     hw_description: '',
     hw_due_at: '',
     hw_xp: '',
+    review_homework: !!session.reviewed_assignment_id,
+    reviewed_assignment_id: session.reviewed_assignment_id ?? null,
   });
   const [hwLoaded, setHwLoaded] = useState(false);
   // hwQ 의 결과로 폼을 한 번 채워준다 (set-state-in-effect 회피 위해 isFetched 후 lazy init).
@@ -690,6 +521,7 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
         topic: form.topic || null,
         subject_id: form.subject_id,
         content_md: form.content_md || null,
+        reviewed_assignment_id: form.review_homework ? form.reviewed_assignment_id : null,
       });
       const wantHomework = form.add_homework && form.hw_title.trim().length > 0;
       await upsertSessionAssignment({
@@ -844,6 +676,34 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
             </div>
           )}
         </div>
+        {tenantId && (
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+              <Checkbox
+                checked={form.review_homework}
+                onCheckedChange={(c) =>
+                  setForm({
+                    ...form,
+                    review_homework: c === true,
+                    reviewed_assignment_id: c === true ? form.reviewed_assignment_id : null,
+                  })
+                }
+              />
+              과제 점검 추가
+            </label>
+            {form.review_homework && (
+              <div className="pl-1">
+                <HomeworkReviewPicker
+                  orgId={session.organization_id}
+                  tenantId={tenantId}
+                  currentSessionId={session.id}
+                  value={form.reviewed_assignment_id}
+                  onChange={(aid) => setForm({ ...form, reviewed_assignment_id: aid })}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <DialogFooter>
         <Button disabled={busy || !hwQ.isFetched} onClick={submit}>

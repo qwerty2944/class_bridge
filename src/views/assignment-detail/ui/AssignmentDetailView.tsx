@@ -296,10 +296,10 @@ function TeacherGrading({
                 <Avatar className="h-8 w-8">
                   <AvatarFallback>{s.student?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
                 </Avatar>
-                <div className="flex-1 min-w-0">
+                <Link href={`/students/${s.student_id}`} className="flex-1 min-w-0 hover:underline">
                   <p className="text-sm font-medium truncate">{s.student?.full_name}</p>
                   <p className="text-xs text-muted-foreground truncate">{s.student?.email}</p>
-                </div>
+                </Link>
                 {studentSubmitted && (
                   <Badge variant="outline" className="border-amber-400 text-amber-700">
                     학생 제출

@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Check, Copy, MoreVertical, RefreshCw, Trash2, UserPlus, Users, X } from 'lucide-react';
@@ -140,12 +141,10 @@ export function MembersClient() {
                   {filtered.length === 0 && (
                     <p className="p-10 text-center text-sm text-muted-foreground">회원이 없습니다.</p>
                   )}
-                  {filtered.map((m) => (
-                    <div key={m.id} className="flex items-center gap-3 p-4">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback>{m.profile?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
+                  {filtered.map((m) => {
+                    const isStudent = m.role === 'student';
+                    const body = (
+                      <>
                         <p className="font-medium truncate">
                           {m.profile?.full_name ?? '—'}{' '}
                           <span className="text-xs text-muted-foreground">{m.profile?.email}</span>
@@ -153,7 +152,20 @@ export function MembersClient() {
                         <p className="text-xs text-muted-foreground">
                           {new Date(m.joined_at).toLocaleDateString('ko-KR')} 가입
                         </p>
-                      </div>
+                      </>
+                    );
+                    return (
+                    <div key={m.id} className="flex items-center gap-3 p-4">
+                      <Avatar className="h-9 w-9">
+                        <AvatarFallback>{m.profile?.full_name?.slice(0, 1) ?? '?'}</AvatarFallback>
+                      </Avatar>
+                      {isStudent ? (
+                        <Link href={`/students/${m.user_id}`} className="flex-1 min-w-0 hover:underline">
+                          {body}
+                        </Link>
+                      ) : (
+                        <div className="flex-1 min-w-0">{body}</div>
+                      )}
                       <Badge variant="secondary">{ROLE_LABEL[m.role]}</Badge>
                       {m.role === 'parent' && tenantId && m.profile && (
                         <ParentChildrenDialog
@@ -185,7 +197,8 @@ export function MembersClient() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>

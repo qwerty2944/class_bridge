@@ -151,6 +151,7 @@ export function OrganizationDetailClient({ orgId }: { orgId: string }) {
                 key={m.id}
                 name={m.profile?.full_name}
                 email={m.profile?.email}
+                href={m.user_id ? `/students/${m.user_id}` : undefined}
                 onRemove={() => (has('director') || has('teacher')) && remove.mutate(m.id)}
                 canRemove={has('director') || has('teacher')}
               />
@@ -162,16 +163,37 @@ export function OrganizationDetailClient({ orgId }: { orgId: string }) {
   );
 }
 
-function MemberRow({ name, email, onRemove, canRemove }: { name?: string | null; email?: string | null; onRemove: () => void; canRemove: boolean }) {
+function MemberRow({
+  name,
+  email,
+  href,
+  onRemove,
+  canRemove,
+}: {
+  name?: string | null;
+  email?: string | null;
+  href?: string;
+  onRemove: () => void;
+  canRemove: boolean;
+}) {
+  const body = (
+    <>
+      <p className="text-sm font-medium truncate">{name ?? '—'}</p>
+      <p className="text-xs text-muted-foreground truncate">{email}</p>
+    </>
+  );
   return (
     <div className="flex items-center gap-3 p-2 rounded-md hover:bg-accent">
       <Avatar className="h-8 w-8">
         <AvatarFallback>{name?.slice(0, 1) ?? '?'}</AvatarFallback>
       </Avatar>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{name ?? '—'}</p>
-        <p className="text-xs text-muted-foreground truncate">{email}</p>
-      </div>
+      {href ? (
+        <Link href={href} className="flex-1 min-w-0 hover:underline">
+          {body}
+        </Link>
+      ) : (
+        <div className="flex-1 min-w-0">{body}</div>
+      )}
       {canRemove && (
         <Button size="icon" variant="ghost" onClick={onRemove}>
           <Trash2 className="h-4 w-4" />

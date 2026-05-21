@@ -29,6 +29,7 @@ import { fetchOrganizations, fetchOrganizationsForUser } from '@/entities/organi
 import type { OrgWithSubject } from '@/entities/organization';
 import { fetchSubjects } from '@/entities/subject';
 import { RichTextEditor } from '@/features/rich-text-editor';
+import { HomeworkReviewPicker } from '@/features/homework-review';
 
 export function ClassesClient({ initialOrgId }: { initialOrgId: string | null }) {
   const { tenantId, has, userId } = useCurrentTenant();
@@ -178,6 +179,8 @@ function NewSessionDialog({
     hw_description: '',
     hw_due_at: '',
     hw_xp: '',
+    review_homework: false,
+    reviewed_assignment_id: null as string | null,
   });
   const [busy, setBusy] = useState(false);
 
@@ -194,6 +197,7 @@ function NewSessionDialog({
         subject_id: form.subject_id,
         content_md: form.content_md || null,
         teacher_id: userId,
+        reviewed_assignment_id: form.review_homework ? form.reviewed_assignment_id : null,
       });
       const wantHomework = form.add_homework && form.hw_title.trim().length > 0;
       await upsertSessionAssignment({
@@ -378,6 +382,33 @@ function NewSessionDialog({
               </div>
             )}
           </div>
+          {tenantId && form.organization_id && (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                <Checkbox
+                  checked={form.review_homework}
+                  onCheckedChange={(c) =>
+                    setForm({
+                      ...form,
+                      review_homework: c === true,
+                      reviewed_assignment_id: c === true ? form.reviewed_assignment_id : null,
+                    })
+                  }
+                />
+                과제 점검 추가
+              </label>
+              {form.review_homework && (
+                <div className="pl-1">
+                  <HomeworkReviewPicker
+                    orgId={form.organization_id}
+                    tenantId={tenantId}
+                    value={form.reviewed_assignment_id}
+                    onChange={(aid) => setForm({ ...form, reviewed_assignment_id: aid })}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button disabled={busy} onClick={submit}>
