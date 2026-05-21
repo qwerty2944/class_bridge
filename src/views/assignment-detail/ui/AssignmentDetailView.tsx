@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowLeft, CalendarClock, ClipboardList } from 'lucide-react';
+import { ArrowLeft, CalendarClock, ClipboardList, Pencil } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
@@ -13,6 +13,14 @@ import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { Skeleton } from '@/shared/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/shared/ui/dialog';
 import {
   fetchAssignment,
   fetchMySubmission,
@@ -23,8 +31,10 @@ import {
   submitAssignment,
   updateAssignment,
 } from '@/entities/assignment';
+import { fetchSubjects } from '@/entities/subject';
 import { awardForGrade } from '@/entities/reward';
 import { useCurrentTenant } from '@/features/tenant-switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { SUBMISSION_LABEL, SUBMISSION_QUALITY_LABEL, type SubmissionQuality } from '@/shared/types/database';
 import { cn } from '@/shared/lib/utils';
 
@@ -57,11 +67,14 @@ export function AssignmentDetailClient({ assignmentId }: { assignmentId: string 
       </Button>
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <ClipboardList className="h-5 w-5 text-muted-foreground" />
             <CardTitle>{a.title}</CardTitle>
             {a.subject && <Badge variant="secondary">{a.subject.name}</Badge>}
             <Badge variant="outline">{a.xp_reward} XP</Badge>
+            <div className="ml-auto">
+              {canGrade && <EditAssignmentDialog assignment={a} />}
+            </div>
           </div>
           <CardDescription className="flex items-center gap-2">
             {a.due_at && (
@@ -411,5 +424,142 @@ export function QualitySegmented({
         );
       })}
     </div>
+  );
+}
+
+// ISO → datetime-local 문자열 (로컬 타임존 보정).
+function toDateTimeLocal(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function EditAssignmentDialog({
+  assignment,
+}: {
+  assignment: NonNullable<Awaited<ReturnType<typeof fetchAssignment>>>;
+}) {
+  const { tenantId } = useCurrentTenant();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const subjectsQ = useQuery({
+    queryKey: ['subjects', tenantId],
+    enabled: !!tenantId && open,
+    queryFn: () => fetchSubjects(tenantId!),
+  });
+  const [form, setForm] = useState({
+    title: assignment.title,
+    description_md: assignment.description_md ?? '',
+    due_at: toDateTimeLocal(assignment.due_at),
+    xp_reward: String(assignment.xp_reward ?? 0),
+    subject_id: assignment.subject_id,
+  });
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!form.title.trim()) return;
+    setBusy(true);
+    try {
+      await updateAssignment(assignment.id, {
+        title: form.title.trim(),
+        description_md: form.description_md.trim() || null,
+        due_at: form.due_at ? new Date(form.due_at).toISOString() : null,
+        xp_reward: form.xp_reward ? Math.max(0, Math.round(Number(form.xp_reward))) : 0,
+        subject_id: form.subject_id,
+      });
+      qc.invalidateQueries({ queryKey: ['assignment', assignment.id] });
+      qc.invalidateQueries({ queryKey: ['assignments-multi'] });
+      toast.success('과제 수정됨');
+      setOpen(false);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="gap-1">
+          <Pencil className="h-3.5 w-3.5" /> 수정
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>과제 수정</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>제목</Label>
+            <Input
+              className="mt-1"
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>설명</Label>
+            <Textarea
+              className="mt-1"
+              rows={3}
+              value={form.description_md}
+              onChange={(e) => setForm({ ...form, description_md: e.target.value })}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>마감</Label>
+              <Input
+                className="mt-1"
+                type="datetime-local"
+                value={form.due_at}
+                onChange={(e) => setForm({ ...form, due_at: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>완료 시 XP</Label>
+              <Input
+                className="mt-1"
+                type="number"
+                min={0}
+                value={form.xp_reward}
+                onChange={(e) => setForm({ ...form, xp_reward: e.target.value })}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>과목</Label>
+            <Select
+              value={form.subject_id ?? '__none'}
+              onValueChange={(v) => setForm({ ...form, subject_id: v === '__none' ? null : v })}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue>
+                  {(value) => {
+                    const v = String(value ?? '');
+                    if (!v || v === '__none') return '미지정';
+                    return subjectsQ.data?.find((s) => s.id === v)?.name ?? '미지정';
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">미지정</SelectItem>
+                {subjectsQ.data?.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={submit} disabled={busy || !form.title.trim()}>
+            저장
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

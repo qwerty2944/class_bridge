@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { CalendarDays, Plus, X } from 'lucide-react';
+import { CalendarDays, LayoutGrid, CalendarRange, Plus, X } from 'lucide-react';
 import { Card, CardContent } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Skeleton } from '@/shared/ui/skeleton';
@@ -30,6 +30,8 @@ import type { OrgWithSubject } from '@/entities/organization';
 import { fetchSubjects } from '@/entities/subject';
 import { RichTextEditor } from '@/features/rich-text-editor';
 import { HomeworkReviewPicker } from '@/features/homework-review';
+import { cn } from '@/shared/lib/utils';
+import { ClassCalendar } from './ClassCalendar';
 
 export function ClassesClient({ initialOrgId }: { initialOrgId: string | null }) {
   const { tenantId, has, userId } = useCurrentTenant();
@@ -54,6 +56,10 @@ export function ClassesClient({ initialOrgId }: { initialOrgId: string | null })
   });
 
   const [orgFilter, setOrgFilter] = useState<string>(initialOrgId ?? 'all');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  // 달력에서 빈 날 클릭으로 새 수업 다이얼로그를 외부 제어로 열 때 사용.
+  const [newSessionOpen, setNewSessionOpen] = useState(false);
+  const [newSessionDate, setNewSessionDate] = useState<string | null>(null);
 
   const filtered = (sQ.data ?? []).filter((s) => {
     if (orgFilter !== 'all' && s.organization_id !== orgFilter) return false;
@@ -74,12 +80,18 @@ export function ClassesClient({ initialOrgId }: { initialOrgId: string | null })
             orgs={orgs}
             defaultOrgId={orgFilter !== 'all' ? orgFilter : orgs[0].id}
             userId={userId}
+            controlledOpen={newSessionOpen}
+            onControlledOpenChange={(o) => {
+              setNewSessionOpen(o);
+              if (!o) setNewSessionDate(null);
+            }}
+            defaultSessionDate={newSessionDate}
           />
         )}
       </header>
 
-      {/* 필터 */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* 필터 + 뷰 토글 */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Select value={orgFilter} onValueChange={(v) => setOrgFilter(v ?? 'all')}>
           <SelectTrigger className="w-44">
             <SelectValue>
@@ -99,6 +111,28 @@ export function ClassesClient({ initialOrgId }: { initialOrgId: string | null })
             ))}
           </SelectContent>
         </Select>
+        <div className="inline-flex overflow-hidden rounded-md border bg-background text-sm">
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-3 py-1.5 transition',
+              viewMode === 'list' ? 'bg-foreground text-background' : 'hover:bg-accent',
+            )}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" /> 리스트
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('calendar')}
+            className={cn(
+              'inline-flex items-center gap-1.5 border-l px-3 py-1.5 transition',
+              viewMode === 'calendar' ? 'bg-foreground text-background' : 'hover:bg-accent',
+            )}
+          >
+            <CalendarRange className="h-3.5 w-3.5" /> 달력
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -109,6 +143,18 @@ export function ClassesClient({ initialOrgId }: { initialOrgId: string | null })
             소속된 반이 없습니다.
           </CardContent>
         </Card>
+      ) : viewMode === 'calendar' ? (
+        <ClassCalendar
+          sessions={filtered}
+          onEmptyDayClick={
+            canCreate
+              ? (dateISO) => {
+                  setNewSessionDate(dateISO);
+                  setNewSessionOpen(true);
+                }
+              : undefined
+          }
+        />
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center text-sm text-muted-foreground">
@@ -153,14 +199,28 @@ function NewSessionDialog({
   orgs,
   defaultOrgId,
   userId,
+  controlledOpen,
+  onControlledOpenChange,
+  defaultSessionDate,
 }: {
   orgs: OrgWithSubject[];
   defaultOrgId: string;
   userId: string | null;
+  // 외부에서 열고 닫고 싶을 때 (예: 달력 빈 날 클릭).
+  controlledOpen?: boolean;
+  onControlledOpenChange?: (open: boolean) => void;
+  // 폼의 session_date 초기값을 외부에서 지정.
+  defaultSessionDate?: string | null;
 }) {
   const { tenantId } = useCurrentTenant();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [innerOpen, setInnerOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : innerOpen;
+  const setOpen = (v: boolean) => {
+    if (isControlled) onControlledOpenChange?.(v);
+    else setInnerOpen(v);
+  };
   const subjectsQ = useQuery({
     queryKey: ['subjects', tenantId],
     enabled: !!tenantId && open,
@@ -175,13 +235,19 @@ function NewSessionDialog({
   };
   const [form, setForm] = useState({
     organization_id: defaultOrgId,
-    session_date: new Date().toISOString().slice(0, 10),
+    session_date: defaultSessionDate ?? new Date().toISOString().slice(0, 10),
     start_time: '',
     end_time: '',
     topic: '',
     subject_id: null as string | null,
     content_md: '',
   });
+  // 외부에서 defaultSessionDate 가 바뀌면 폼의 날짜도 따라 변경 (달력 빈 날 클릭).
+  useEffect(() => {
+    if (defaultSessionDate) {
+      setForm((f) => ({ ...f, session_date: defaultSessionDate }));
+    }
+  }, [defaultSessionDate]);
   // '이번 수업에서 나가는 과제' — 여러 개 가능.
   const [newAssignments, setNewAssignments] = useState<NewAssignmentDraft[]>([]);
   // '지난 과제 점검' — assignment id 배열. picker 에서 고른 순간 즉시 들어옴.
