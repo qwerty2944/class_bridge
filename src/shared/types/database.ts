@@ -13,7 +13,7 @@ export type SubmissionStatus = 'pending' | 'submitted' | 'graded';
 export type SubmissionQuality = 'none' | 'partial' | 'done' | 'excellent';
 export type PostCategory = 'notice' | 'free' | 'qna';
 export type Relation = 'father' | 'mother' | 'guardian';
-export type RewardSource = 'assignment_grade' | 'admin' | 'level_bonus' | 'homework_check';
+export type RewardSource = 'assignment_grade' | 'admin' | 'level_bonus' | 'homework_check' | 'quiz';
 export type HandoverScope = 'organization' | 'student';
 export type JoinRequestRole = 'teacher' | 'student' | 'parent';
 export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
@@ -234,6 +234,33 @@ export interface TeacherHandover {
   created_at: string;
 }
 
+// 퀴즈(시험) 점수 기록.
+export type QuizXpRule =
+  | { kind: 'proportional'; maxXp: number }
+  | { kind: 'cutoff'; threshold: number; xp: number }
+  | { kind: 'bands'; bands: { minScore: number; xp: number }[] };
+
+export interface Quiz {
+  id: string;
+  organization_id: string;
+  subject_id: string | null;
+  name: string;
+  quiz_date: string;
+  max_score: number;
+  xp_rule: QuizXpRule;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface QuizScore {
+  id: string;
+  quiz_id: string;
+  student_id: string;
+  score: number | null;
+  xp_awarded: number;
+  recorded_at: string | null;
+}
+
 export interface TenantJoinRequest {
   id: string;
   tenant_id: string;
@@ -334,6 +361,16 @@ export type Database = {
         Insert: Partial<TenantJoinRequest> &
           Pick<TenantJoinRequest, 'tenant_id' | 'user_id' | 'requested_role'>;
         Update: Partial<TenantJoinRequest>;
+      };
+      quizzes: {
+        Row: Quiz;
+        Insert: Partial<Quiz> & Pick<Quiz, 'organization_id' | 'name'>;
+        Update: Partial<Quiz>;
+      };
+      quiz_scores: {
+        Row: QuizScore;
+        Insert: Partial<QuizScore> & Pick<QuizScore, 'quiz_id' | 'student_id'>;
+        Update: Partial<QuizScore>;
       };
     };
   };
