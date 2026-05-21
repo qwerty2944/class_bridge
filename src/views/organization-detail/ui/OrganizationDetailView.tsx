@@ -304,27 +304,39 @@ function AddOrgMemberDialog({ orgId, role }: { orgId: string; role: OrgRole }) {
           <DialogTitle>{role === 'teacher' ? '선생님 배정' : '학생 추가'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <Label>학원 회원 선택</Label>
-          <Select value={picked ?? ''} onValueChange={(v) => setPicked(v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="선택" />
-            </SelectTrigger>
-            <SelectContent>
-              {filtered.length === 0 && (
-                <div className="p-3 text-xs text-muted-foreground">선택 가능한 회원이 없습니다.</div>
-              )}
-              {filtered.map((m) => (
-                <SelectItem key={m.user_id} value={m.user_id}>
-                  {m.profile?.full_name} ({m.profile?.email})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div>
+            <Label>학원 회원 선택</Label>
+            <Select value={picked ?? ''} onValueChange={(v) => setPicked(v)}>
+              <SelectTrigger className="w-full mt-1">
+                <SelectValue placeholder="선택">
+                  {(value) => {
+                    const v = String(value ?? '');
+                    if (!v) return '선택';
+                    const m = filtered.find((x) => x.user_id === v);
+                    return m?.profile?.full_name ?? '선택';
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent className="max-h-[300px]">
+                {filtered.length === 0 && (
+                  <div className="p-3 text-xs text-muted-foreground">선택 가능한 회원이 없습니다.</div>
+                )}
+                {filtered.map((m) => (
+                  <SelectItem key={m.user_id} value={m.user_id}>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm">{m.profile?.full_name ?? '이름 없음'}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">{m.profile?.email}</p>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {role === 'teacher' && (
-            <>
+            <div>
               <Label>등급</Label>
               <Select value={teacherRole} onValueChange={(v) => setTeacherRole(v as TeacherRole)}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full mt-1">
                   <SelectValue>
                     {(value) =>
                       TEACHER_ROLE_LABEL[(String(value ?? 'homeroom')) as TeacherRole] ?? '담임'
@@ -336,7 +348,7 @@ function AddOrgMemberDialog({ orgId, role }: { orgId: string; role: OrgRole }) {
                   <SelectItem value="assistant">부담임</SelectItem>
                 </SelectContent>
               </Select>
-            </>
+            </div>
           )}
         </div>
         <DialogFooter>
