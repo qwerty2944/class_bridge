@@ -28,9 +28,10 @@ export const SUBMISSION_LABEL: Record<SubmissionStatus, string> = {
   graded: '채점완료',
 };
 
-// 과제 점검 3단계 — '아주 잘 햇음' 은 보너스 XP 지급 (xpReward * 1.5).
+// 과제 점검 4단계 — XP 배수: none=0, partial=0.5, done=1, excellent=1.5
 export const SUBMISSION_QUALITY_LABEL: Record<SubmissionQuality, string> = {
   none: '안 햇음',
+  partial: '햇는데 미흡',
   done: '햇음',
   excellent: '아주 잘 햇음',
 };

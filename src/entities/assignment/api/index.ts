@@ -152,19 +152,21 @@ export async function upsertSessionAssignment(input: {
   });
 }
 
-// 과제 점검 3단계 (안 햇음 / 햇음 / 아주 잘 햇음) — submission 의 quality + status 를 갱신하고
-// awardForGrade 로 XP delta 처리. awardForGrade 가 source_ref=submissionId 로 idempotent 라
-// 단계 사이를 자유롭게 오가도 reward_events 가 단일 row 만 갱신된다.
+// 과제 점검 4단계 (안 햇음 / 햇는데 미흡 / 햇음 / 아주 잘 햇음) — submission 의 quality + status
+// 를 갱신하고 awardForGrade 로 XP delta 처리. awardForGrade 가 source_ref=submissionId 로
+// idempotent 라 단계 사이를 자유롭게 오가도 reward_events 가 단일 row 만 갱신된다.
 //
-// - 'none': status='pending', xpReward=0 (회수)
-// - 'done': status='graded', xpReward=xpReward
-// - 'excellent': status='graded', xpReward=round(xpReward * 1.5)  ← 보너스
+// XP 배수:
+// - 'none': 0 (status='pending', 회수)
+// - 'partial': xpReward * 0.5 (status='graded')
+// - 'done': xpReward * 1.0 (status='graded')
+// - 'excellent': xpReward * 1.5 (status='graded', 보너스)
 export async function setHomeworkQuality(args: {
   submissionId: string;
   tenantId: string;
   studentUserId: string;
   studentFullName?: string | null;
-  quality: 'none' | 'done' | 'excellent';
+  quality: 'none' | 'partial' | 'done' | 'excellent';
   xpReward: number;
 }) {
   const client = sb();
@@ -193,12 +195,14 @@ export async function setHomeworkQuality(args: {
     if (error) throw error;
   }
 
-  const xp =
+  const multiplier =
     args.quality === 'excellent'
-      ? Math.round(args.xpReward * 1.5)
+      ? 1.5
       : args.quality === 'done'
-        ? args.xpReward
-        : 0;
+        ? 1.0
+        : args.quality === 'partial'
+          ? 0.5
+          : 0;
 
   return awardForGrade({
     tenantId: args.tenantId,
@@ -206,7 +210,7 @@ export async function setHomeworkQuality(args: {
     studentFullName: args.studentFullName,
     submissionId: args.submissionId,
     score: 0,
-    xpReward: xp,
+    xpReward: Math.round(args.xpReward * multiplier),
   });
 }
 
