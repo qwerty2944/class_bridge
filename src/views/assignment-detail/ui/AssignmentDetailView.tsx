@@ -268,25 +268,25 @@ function TeacherGrading({
                   <p className="text-xs text-muted-foreground truncate">{s.student?.email}</p>
                 </div>
                 {studentSubmitted && (
-                  <>
-                    <Badge variant="outline" className="border-amber-400 text-amber-700">
-                      학생 제출
-                    </Badge>
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        qualityMutation.mutate({
-                          submissionId: s.id,
-                          studentId: s.student_id,
-                          studentFullName: s.student?.full_name ?? null,
-                          quality: 'done',
-                        })
-                      }
-                    >
-                      제출 승인
-                    </Button>
-                  </>
+                  <Badge variant="outline" className="border-amber-400 text-amber-700">
+                    학생 제출
+                  </Badge>
                 )}
+                {/* 제출 승인 — 학생 상태와 무관하게 한 번 클릭으로 quality='done' 처리 */}
+                <Button
+                  size="sm"
+                  variant={s.quality === 'done' ? 'default' : 'outline'}
+                  onClick={() =>
+                    qualityMutation.mutate({
+                      submissionId: s.id,
+                      studentId: s.student_id,
+                      studentFullName: s.student?.full_name ?? null,
+                      quality: 'done',
+                    })
+                  }
+                >
+                  제출 승인
+                </Button>
                 <QualitySegmented
                   value={s.quality}
                   onChange={(q) =>
