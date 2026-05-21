@@ -16,7 +16,10 @@ type SharedSession = ClassSession & {
   subject: Subject | null;
   teacher: Profile | null;
   organization: Organization | null;
+  // 이번 수업에서 나가는 과제 (source_session_id = this).
   assignments: Assignment[];
+  // 지난 과제 점검 (class_session_reviews junction).
+  class_session_reviews: { assignment: Assignment | null }[];
 };
 
 // generateMetadata + 페이지가 같은 요청 내에서 쿼리를 공유하도록 cache() 로 감쌈.
@@ -25,7 +28,7 @@ const getSharedSession = cache(async (token: string): Promise<SharedSession | nu
   const { data } = await supabase
     .from('class_sessions')
     .select(
-      '*, subject:subjects(*), teacher:profiles!class_sessions_teacher_id_fkey(*), organization:organizations(*), assignments:assignments!assignments_source_session_id_fkey(*)',
+      '*, subject:subjects(*), teacher:profiles!class_sessions_teacher_id_fkey(*), organization:organizations(*), assignments:assignments!assignments_source_session_id_fkey(*), class_session_reviews(assignment:assignments(*))',
     )
     .eq('share_token', token)
     .maybeSingle();
@@ -98,22 +101,60 @@ export default async function SharedClassPage({
           <RichContent html={s.content_md} />
         </section>
 
-        {s.assignments?.[0] && (
+        {s.assignments && s.assignments.length > 0 && (
           <section className="rounded-xl border bg-card p-6 shadow-sm">
-            <h2 className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">과제</h2>
-            <p className="text-sm font-medium">{s.assignments[0].title}</p>
-            {s.assignments[0].description_md && (
-              <p className="mt-1.5 whitespace-pre-wrap text-sm text-muted-foreground">
-                {s.assignments[0].description_md}
-              </p>
-            )}
-            {s.assignments[0].due_at && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                마감: {new Date(s.assignments[0].due_at).toLocaleString('ko-KR')}
-              </p>
-            )}
+            <h2 className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
+              이번 수업에서 나가는 과제
+            </h2>
+            <ul className="space-y-3">
+              {s.assignments.map((a) => (
+                <li key={a.id} className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-sm font-medium">{a.title}</p>
+                  {a.description_md && (
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                      {a.description_md}
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {a.due_at && <span>마감: {new Date(a.due_at).toLocaleString('ko-KR')}</span>}
+                    {a.xp_reward > 0 && <span>완료 시 +{a.xp_reward} XP</span>}
+                  </div>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
+
+        {(() => {
+          const reviewed = (s.class_session_reviews ?? [])
+            .map((r) => r.assignment)
+            .filter((a): a is Assignment => !!a);
+          if (reviewed.length === 0) return null;
+          return (
+            <section className="rounded-xl border bg-card p-6 shadow-sm">
+              <h2 className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
+                지난 과제 점검
+              </h2>
+              <ul className="space-y-3">
+                {reviewed.map((a) => (
+                  <li key={a.id} className="rounded-md border bg-muted/20 p-3">
+                    <p className="text-sm font-medium">{a.title}</p>
+                    {a.description_md && (
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                        {a.description_md}
+                      </p>
+                    )}
+                    {a.due_at && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        마감: {new Date(a.due_at).toLocaleString('ko-KR')}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })()}
 
         <p className="pt-2 text-center text-xs text-muted-foreground">Class Bridge</p>
       </div>
