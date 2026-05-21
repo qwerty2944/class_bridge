@@ -11,8 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/shared/ui/skeleton';
 import { fetchClassSessions } from '@/entities/class-session';
 import {
-  fetchSessionAssignment,
-  fetchSessionAssignmentMap,
+  fetchAssignmentWithSubmissions,
+  fetchAssignmentsByOrgs,
   setSubmissionApproved,
   setSubmissionQuality,
   type SessionAssignment,
@@ -21,13 +21,13 @@ import { QualitySegmented } from '@/views/assignment-detail/ui/AssignmentDetailV
 import { SUBMISSION_QUALITY_LABEL, type SubmissionQuality } from '@/shared/types/database';
 
 /**
- * 지난 수업 과제를 골라 학생별 quality/승인을 매기는 재사용 컴포넌트.
+ * 지난 과제를 골라 학생별 quality/승인을 매기는 재사용 컴포넌트.
  *
- * - 수업 상세(PastHomeworkCheck) 에서: 같은 반의 다른 수업을 고르게 함 (currentSessionId 로 자기 제외).
- * - 새 수업/수업 수정 다이얼로그에서: 만들고 있는 새 수업이 점검할 과거 과제를 고르고
- *   학생별 처리를 미리 수행. 선택값은 value/onChange 로 외부에 expose.
+ * Select 옵션 = 같은 반의 모든 과제 (수업에 묶인 것 + 직접 만든 standalone 모두).
+ * 라벨은 source_session 이 있으면 '{날짜} · {수업주제} — {과제 제목}', 없으면 '{제목}'.
+ * `currentSessionId` 가 주어지면 그 수업에서 만든 과제는 옵션에서 제외 (자기 자신 점검 방지).
  *
- * value/onChange 가 없으면 내부 상태로만 동작 (PastHomeworkCheck 의 가벼운 점검 흐름).
+ * value/onChange 가 없으면 내부 상태로만 동작 (가벼운 점검 흐름).
  */
 export function HomeworkReviewPicker({
   orgId,
@@ -35,7 +35,7 @@ export function HomeworkReviewPicker({
   currentSessionId,
   value,
   onChange,
-  emptyHint = '점검할 과거 과제가 없습니다.',
+  emptyHint = '점검할 과제가 없습니다.',
 }: {
   orgId: string;
   tenantId: string;
@@ -46,53 +46,47 @@ export function HomeworkReviewPicker({
 }) {
   const qc = useQueryClient();
 
+  // 같은 반의 모든 과제 + 수업 정보. 수업에 묶이지 않은 과제도 포함.
+  const assignmentsQ = useQuery({
+    queryKey: ['assignments-by-org', orgId],
+    queryFn: () => fetchAssignmentsByOrgs([orgId]),
+  });
   const sessionsQ = useQuery({
     queryKey: ['class-sessions', orgId],
     queryFn: () => fetchClassSessions(orgId),
   });
-  const others = useMemo(
-    () => (sessionsQ.data ?? []).filter((x) => x.id !== currentSessionId),
-    [sessionsQ.data, currentSessionId],
-  );
 
-  // 과제가 있는 수업만 옵션 — N+1 회피용 묶음 조회.
-  const mapQ = useQuery({
-    queryKey: ['session-assignment-map', orgId, others.map((o) => o.id).join(',')],
-    enabled: others.length > 0,
-    queryFn: () => fetchSessionAssignmentMap(others.map((o) => o.id)),
-  });
-  const eligible = useMemo(
-    () => others.filter((x) => mapQ.data && mapQ.data[x.id]),
-    [others, mapQ.data],
-  );
-
-  // 부모가 value(=assignmentId) 로 제어 중이면 그 값으로, 아니면 첫 옵션 자동.
-  const sessionByAssignment = useMemo(() => {
-    const m: Record<string, string> = {};
-    if (mapQ.data) for (const [sid, aid] of Object.entries(mapQ.data)) m[aid] = sid;
+  const sessionById = useMemo(() => {
+    const m = new Map<string, NonNullable<typeof sessionsQ.data>[number]>();
+    for (const s of sessionsQ.data ?? []) m.set(s.id, s);
     return m;
-  }, [mapQ.data]);
+  }, [sessionsQ.data]);
 
-  const controlled = value !== undefined;
-  const fallbackSessionId = eligible[0]?.id ?? '';
-  const selectedSessionId = controlled
-    ? value
-      ? sessionByAssignment[value] ?? ''
-      : ''
-    : fallbackSessionId;
+  // currentSessionId 의 source_session_id 와 일치하면 제외 (자기 점검 방지).
+  const eligible = useMemo(() => {
+    return (assignmentsQ.data ?? []).filter(
+      (a) => !currentSessionId || a.source_session_id !== currentSessionId,
+    );
+  }, [assignmentsQ.data, currentSessionId]);
 
-  const selectedAssignmentId = selectedSessionId ? mapQ.data?.[selectedSessionId] ?? null : null;
-  const selectedSession = eligible.find((x) => x.id === selectedSessionId) ?? null;
-
-  const handleSelect = (sessionId: string) => {
-    const aid = mapQ.data?.[sessionId] ?? null;
-    onChange?.(aid);
+  const labelOf = (a: NonNullable<typeof assignmentsQ.data>[number]) => {
+    const sess = a.source_session_id ? sessionById.get(a.source_session_id) : null;
+    if (sess) {
+      const date = new Date(sess.session_date).toLocaleDateString('ko-KR');
+      const topic = sess.topic ?? '수업';
+      return `${date} · ${topic} — ${a.title}`;
+    }
+    return a.title;
   };
 
+  const controlled = value !== undefined;
+  const fallbackAssignmentId = eligible[0]?.id ?? '';
+  const selectedAssignmentId = controlled ? value ?? '' : fallbackAssignmentId;
+
   const hwQ = useQuery({
-    queryKey: ['session-assignment', selectedSessionId],
-    enabled: !!selectedSessionId,
-    queryFn: () => fetchSessionAssignment(selectedSessionId),
+    queryKey: ['assignment-with-submissions', selectedAssignmentId],
+    enabled: !!selectedAssignmentId,
+    queryFn: () => fetchAssignmentWithSubmissions(selectedAssignmentId),
   });
 
   const xpReward = hwQ.data?.xp_reward ?? 0;
@@ -113,7 +107,7 @@ export function HomeworkReviewPicker({
         xpReward,
       }),
     onSuccess: (r, vars) => {
-      qc.invalidateQueries({ queryKey: ['session-assignment', selectedSessionId] });
+      qc.invalidateQueries({ queryKey: ['assignment-with-submissions', selectedAssignmentId] });
       qc.invalidateQueries({ queryKey: ['character'] });
       const label = SUBMISSION_QUALITY_LABEL[vars.quality];
       if (r && r.xpAdded !== 0) {
@@ -143,7 +137,7 @@ export function HomeworkReviewPicker({
         xpReward,
       }),
     onSuccess: (r, vars) => {
-      qc.invalidateQueries({ queryKey: ['session-assignment', selectedSessionId] });
+      qc.invalidateQueries({ queryKey: ['assignment-with-submissions', selectedAssignmentId] });
       qc.invalidateQueries({ queryKey: ['character'] });
       if (r && r.xpAdded !== 0) {
         toast.success(
@@ -156,33 +150,34 @@ export function HomeworkReviewPicker({
     onError: (e) => toast.error((e as Error).message),
   });
 
-  if (!sessionsQ.isLoading && eligible.length === 0) {
+  if (!assignmentsQ.isLoading && eligible.length === 0) {
     return <p className="py-4 text-center text-sm text-muted-foreground">{emptyHint}</p>;
   }
 
   return (
     <div className="space-y-3">
-      <Select value={selectedSessionId} onValueChange={(v) => v && handleSelect(v)}>
+      <Select
+        value={selectedAssignmentId}
+        onValueChange={(v) => v && onChange?.(v)}
+      >
         <SelectTrigger>
           <SelectValue>
             {(val) => {
-              const x = eligible.find((o) => o.id === String(val ?? ''));
-              return x
-                ? `${new Date(x.session_date).toLocaleDateString('ko-KR')} · ${x.topic ?? '수업'}`
-                : '수업 선택';
+              const a = eligible.find((o) => o.id === String(val ?? ''));
+              return a ? labelOf(a) : '과제 선택';
             }}
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {eligible.map((x) => (
-            <SelectItem key={x.id} value={x.id}>
-              {new Date(x.session_date).toLocaleDateString('ko-KR')} · {x.topic ?? '수업'}
+          {eligible.map((a) => (
+            <SelectItem key={a.id} value={a.id}>
+              {labelOf(a)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
 
-      {selectedSession && hwQ.data && (
+      {hwQ.data && (
         <div className="rounded-md border bg-muted/30 p-3 text-sm">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium">{hwQ.data.title}</span>
@@ -208,7 +203,7 @@ export function HomeworkReviewPicker({
           <Skeleton className="h-24" />
         ) : !hwQ.data || hwQ.data.submissions.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
-            {selectedAssignmentId ? '학생이 없습니다.' : '과거 수업을 선택하세요.'}
+            {selectedAssignmentId ? '학생이 없습니다.' : '과제를 선택하세요.'}
           </p>
         ) : (
           renderSubmissions(
