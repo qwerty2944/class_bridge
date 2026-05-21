@@ -69,7 +69,13 @@ export function BoardClient() {
         {scope === 'org' && (
           <Select value={orgId ?? ''} onValueChange={(v) => setOrgId(v || null)}>
             <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="반 선택" />
+              <SelectValue placeholder="반 선택">
+                {(value) => {
+                  const v = String(value ?? '');
+                  if (!v) return '반 선택';
+                  return orgsQ.data?.find((o) => o.id === v)?.name ?? '반 선택';
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {orgsQ.data?.map((o) => (
@@ -168,7 +174,11 @@ function NewPostDialog() {
                 onValueChange={(v) => setForm({ ...form, category: v as PostCategory })}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>
+                    {(value) =>
+                      CATEGORY_LABEL[(String(value ?? 'free')) as PostCategory] ?? '자유'
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {has('director') && <SelectItem value="notice">공지</SelectItem>}
@@ -184,7 +194,14 @@ function NewPostDialog() {
                 onValueChange={(v) => setForm({ ...form, organization_id: v === '__tenant' ? null : v })}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>
+                    {(value) => {
+                      const v = String(value ?? '__tenant');
+                      if (v === '__tenant') return '학원 전체';
+                      const o = orgsQ.data?.find((x) => x.id === v);
+                      return o ? `반: ${o.name}` : '학원 전체';
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__tenant">학원 전체</SelectItem>
