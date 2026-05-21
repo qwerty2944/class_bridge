@@ -24,7 +24,22 @@ import { useCurrentTenant } from '@/features/tenant-switch';
 import { createOrganization, fetchOrganizations, fetchOrganizationsForUser } from '@/entities/organization';
 import { fetchSubjects } from '@/entities/subject';
 
-const ORG_COLORS = ['#3b82f6', '#10b981', '#f97316', '#a855f7', '#ec4899', '#06b6d4'];
+// 반 색상 팔레트 — 기본(차분한) 색 + 형광(밝고 채도 높은) 색.
+// 추가/수정 다이얼로그 + 캘린더 칩이 모두 이 팔레트를 공유한다.
+export const ORG_COLORS = [
+  // 기본 톤
+  '#3b82f6', '#10b981', '#f97316', '#a855f7', '#ec4899', '#06b6d4',
+  '#ef4444', '#f59e0b', '#6366f1', '#14b8a6', '#0ea5e9', '#9333ea',
+  // 형광 톤 (highlighter)
+  '#fff200', // 형광 노랑
+  '#39ff14', // 형광 그린
+  '#ff00ff', // 형광 마젠타
+  '#00ffff', // 형광 시안
+  '#ff6ec7', // 형광 핑크
+  '#ff9933', // 형광 오렌지
+  '#ccff00', // 형광 라임
+  '#ff3131', // 형광 레드
+];
 
 export function OrganizationsClient() {
   const { tenantId, userId, has } = useCurrentTenant();
@@ -158,17 +173,24 @@ function NewOrgDialog() {
           </div>
           <div>
             <Label>색상</Label>
-            <div className="mt-1 flex gap-2">
+            <div className="mt-1 flex flex-wrap gap-2">
               {ORG_COLORS.map((c) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  className="h-8 w-8 rounded-md"
-                  style={{ background: c, outline: color === c ? '2px solid currentColor' : 'none' }}
+                  aria-label={c}
+                  className="h-8 w-8 rounded-md ring-offset-2 transition"
+                  style={{
+                    background: c,
+                    outline: color === c ? '2px solid currentColor' : 'none',
+                  }}
                 />
               ))}
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              형광 색은 캘린더에서 더 잘 보입니다.
+            </p>
           </div>
         </div>
         <DialogFooter>

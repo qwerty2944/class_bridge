@@ -27,7 +27,11 @@ import {
   fetchOrganizationMembers,
   removeOrgMember,
   updateOrgMemberTeacherRole,
+  updateOrganization,
 } from '@/entities/organization';
+import { ORG_COLORS } from '@/views/organizations/ui/OrganizationsView';
+import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover';
+import { Palette } from 'lucide-react';
 import { fetchTenantMembers } from '@/entities/tenant';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { ClassHandoverDialog } from '@/features/teacher-handover';
@@ -80,6 +84,13 @@ export function OrganizationDetailClient({ orgId }: { orgId: string }) {
           <div className="flex items-center gap-2">
             <span className="h-2 w-12 rounded" style={{ background: org.color ?? '#3b82f6' }} />
             {org.subject && <Badge variant="secondary">{org.subject.name}</Badge>}
+            {canManageOrg && (
+              <OrgColorPicker
+                orgId={orgId}
+                value={org.color ?? '#3b82f6'}
+                onSaved={() => qc.invalidateQueries({ queryKey: ['org', orgId] })}
+              />
+            )}
           </div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight mt-1">{org.name}</h1>
           <p className="text-sm text-muted-foreground">{org.description ?? '—'}</p>
@@ -358,5 +369,60 @@ function AddOrgMemberDialog({ orgId, role }: { orgId: string; role: OrgRole }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * 반 색상을 빠르게 바꿀 수 있는 popover. 캘린더 칩 / 카드 색상에 반영된다.
+ * 형광 색도 팔레트에 포함.
+ */
+function OrgColorPicker({
+  orgId,
+  value,
+  onSaved,
+}: {
+  orgId: string;
+  value: string;
+  onSaved: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const save = useMutation({
+    mutationFn: (color: string) => updateOrganization(orgId, { color }),
+    onSuccess: () => {
+      onSaved();
+      toast.success('색상 변경됨');
+      setOpen(false);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-accent transition"
+        aria-label="반 색상 변경"
+        title="반 색상 변경"
+      >
+        <Palette className="h-4 w-4" />
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-3">
+        <p className="text-xs font-medium mb-2">반 색상</p>
+        <div className="grid grid-cols-6 gap-1.5 max-w-[200px]">
+          {ORG_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => save.mutate(c)}
+              aria-label={c}
+              className="h-7 w-7 rounded-md ring-offset-2 transition hover:scale-110"
+              style={{
+                background: c,
+                outline: value === c ? '2px solid currentColor' : 'none',
+              }}
+            />
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">캘린더 칩에 적용됩니다.</p>
+      </PopoverContent>
+    </Popover>
   );
 }
