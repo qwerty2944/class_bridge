@@ -93,13 +93,24 @@ export function StudentHandoverDialog({ studentId, studentName }: { studentId: s
           <div className="space-y-1.5">
             <Label>인계 선생님</Label>
             <Select value={effectiveFrom} onValueChange={(v) => setFromTeacherId(v ?? '')}>
-              <SelectTrigger>
-                <SelectValue placeholder="선택" />
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="선택">
+                  {(value) => {
+                    const v = String(value ?? '');
+                    if (!v) return '선택';
+                    return teachers.find((x) => x.user_id === v)?.profile?.full_name ?? '선택';
+                  }}
+                </SelectValue>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[300px]">
                 {teachers.map((m) => (
                   <SelectItem key={`from-${m.user_id}`} value={m.user_id}>
-                    {m.profile?.full_name} ({m.profile?.email})
+                    <div className="min-w-0">
+                      <p className="truncate text-sm">{m.profile?.full_name ?? '이름 없음'}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {m.profile?.email}
+                      </p>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -109,15 +120,26 @@ export function StudentHandoverDialog({ studentId, studentName }: { studentId: s
           <div className="space-y-1.5">
             <Label>인수 선생님</Label>
             <Select value={toTeacherId} onValueChange={(v) => setToTeacherId(v ?? '')}>
-              <SelectTrigger>
-                <SelectValue placeholder="선택" />
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="선택">
+                  {(value) => {
+                    const v = String(value ?? '');
+                    if (!v) return '선택';
+                    return teachers.find((x) => x.user_id === v)?.profile?.full_name ?? '선택';
+                  }}
+                </SelectValue>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[300px]">
                 {teachers
                   .filter((m) => m.user_id !== effectiveFrom)
                   .map((m) => (
                     <SelectItem key={`to-${m.user_id}`} value={m.user_id}>
-                      {m.profile?.full_name} ({m.profile?.email})
+                      <div className="min-w-0">
+                        <p className="truncate text-sm">{m.profile?.full_name ?? '이름 없음'}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {m.profile?.email}
+                        </p>
+                      </div>
                     </SelectItem>
                   ))}
               </SelectContent>

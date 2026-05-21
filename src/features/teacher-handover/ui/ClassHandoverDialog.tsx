@@ -109,17 +109,34 @@ export function ClassHandoverDialog({ orgId, orgName }: { orgId: string; orgName
           <div className="space-y-1.5">
             <Label>인계 선생님 (기존 담당)</Label>
             <Select value={fromMemberId} onValueChange={(v) => setFromMemberId(v ?? '')}>
-              <SelectTrigger>
-                <SelectValue placeholder="선택" />
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="선택">
+                  {(value) => {
+                    const v = String(value ?? '');
+                    if (!v) return '선택';
+                    const m = orgTeachers.find((x) => x.id === v);
+                    if (!m) return '선택';
+                    return `${m.profile?.full_name ?? '이름 없음'}${
+                      m.teacher_role ? ` · ${TEACHER_ROLE_LABEL[m.teacher_role]}` : ''
+                    }`;
+                  }}
+                </SelectValue>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[300px]">
                 {orgTeachers.length === 0 && (
                   <div className="p-3 text-xs text-muted-foreground">이 반에 배정된 선생님이 없습니다.</div>
                 )}
                 {orgTeachers.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
-                    {m.profile?.full_name}
-                    {m.teacher_role ? ` · ${TEACHER_ROLE_LABEL[m.teacher_role]}` : ''} ({m.profile?.email})
+                    <div className="min-w-0">
+                      <p className="truncate text-sm">
+                        {m.profile?.full_name ?? '이름 없음'}
+                        {m.teacher_role ? ` · ${TEACHER_ROLE_LABEL[m.teacher_role]}` : ''}
+                      </p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {m.profile?.email}
+                      </p>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -129,16 +146,29 @@ export function ClassHandoverDialog({ orgId, orgName }: { orgId: string; orgName
           <div className="space-y-1.5">
             <Label>인수 선생님 (새 담당)</Label>
             <Select value={toTeacherId} onValueChange={(v) => setToTeacherId(v ?? '')}>
-              <SelectTrigger>
-                <SelectValue placeholder="선택" />
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="선택">
+                  {(value) => {
+                    const v = String(value ?? '');
+                    if (!v) return '선택';
+                    return (
+                      candidates.find((x) => x.user_id === v)?.profile?.full_name ?? '선택'
+                    );
+                  }}
+                </SelectValue>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[300px]">
                 {candidates.length === 0 && (
                   <div className="p-3 text-xs text-muted-foreground">선택 가능한 선생님이 없습니다.</div>
                 )}
                 {candidates.map((m) => (
                   <SelectItem key={m.user_id} value={m.user_id}>
-                    {m.profile?.full_name} ({m.profile?.email})
+                    <div className="min-w-0">
+                      <p className="truncate text-sm">{m.profile?.full_name ?? '이름 없음'}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {m.profile?.email}
+                      </p>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
