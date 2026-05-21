@@ -14,35 +14,22 @@ interface Props {
   value: string;
   onChange: (html: string) => void;
   placeholder?: string;
+  /** 에디터 본문 최소 높이 (Tailwind 클래스). 기본 'min-h-[140px]'. */
+  minHeight?: string;
 }
 
-/** TipTap 기반 WYSIWYG 에디터 — 서식 + 이미지/PDF 첨부. value 는 HTML 문자열. */
-export function RichTextEditor({ value, onChange, placeholder }: Props) {
+/** TipTap 기반 WYSIWYG 에디터 — 서식 + 이미지/PDF 첨부 + 클립보드 paste / 드래그 드롭. value 는 HTML 문자열. */
+export function RichTextEditor({ value, onChange, placeholder, minHeight }: Props) {
   const [uploading, setUploading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Image.configure({ inline: false }),
-      Placeholder.configure({ placeholder: placeholder ?? '수업 내용을 입력하세요…' }),
-    ],
-    content: value || '',
-    immediatelyRender: false,
-    editorProps: {
-      attributes: { class: 'rich-content min-h-[140px] px-3 py-2 outline-none' },
-    },
-    onUpdate: ({ editor }) => onChange(editor.getHTML()),
-  });
-
-  if (!editor) return null;
-
-  const handleFile = async (file: File | undefined) => {
-    if (!file) return;
+  // 클립보드/드래그한 이미지를 엣지함수 업로드 → AVIF 변환된 URL 로 삽입.
+  const insertFromFile = async (file: File): Promise<void> => {
     setUploading(true);
     try {
       const res = await uploadAttachment(file);
+      if (!editor) return;
       if (res.kind === 'image') {
         editor.chain().focus().setImage({ src: res.url, alt: res.name }).run();
       } else {
@@ -59,6 +46,55 @@ export function RichTextEditor({ value, onChange, placeholder }: Props) {
     } finally {
       setUploading(false);
     }
+  };
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Image.configure({ inline: false }),
+      Placeholder.configure({ placeholder: placeholder ?? '내용을 입력하세요…' }),
+    ],
+    content: value || '',
+    immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        class: cn('rich-content px-3 py-2 outline-none', minHeight ?? 'min-h-[140px]'),
+      },
+      // 붙여넣기에 이미지가 있으면 엣지함수로 업로드해 삽입 (텍스트 paste 는 기본 동작).
+      handlePaste: (_view, event) => {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.kind === 'file' && item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) {
+              event.preventDefault();
+              void insertFromFile(file);
+              return true;
+            }
+          }
+        }
+        return false;
+      },
+      // 드래그앤드롭 이미지도 동일 처리.
+      handleDrop: (_view, event) => {
+        const files = event.dataTransfer?.files;
+        if (!files || files.length === 0) return false;
+        const imageFile = Array.from(files).find((f) => f.type.startsWith('image/'));
+        if (!imageFile) return false;
+        event.preventDefault();
+        void insertFromFile(imageFile);
+        return true;
+      },
+    },
+    onUpdate: ({ editor }) => onChange(editor.getHTML()),
+  });
+
+  if (!editor) return null;
+
+  const handleFile = (file: File | undefined) => {
+    if (file) void insertFromFile(file);
   };
 
   return (

@@ -11,6 +11,7 @@ import { Badge } from '@/shared/ui/badge';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Textarea } from '@/shared/ui/textarea';
+import { RichContent } from '@/features/rich-text-editor';
 import { useRouter } from 'next/navigation';
 import {
   addComment,
@@ -87,7 +88,7 @@ export function PostDetailClient({ postId }: { postId: string }) {
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">{p.content_md ?? ''}</p>
+          <RichContent html={p.content_md} />
           {canManage && (
             <div className="flex gap-2 pt-2 border-t">
               {has('director') && (

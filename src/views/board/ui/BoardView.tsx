@@ -10,7 +10,7 @@ import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
-import { Textarea } from '@/shared/ui/textarea';
+import { RichTextEditor } from '@/features/rich-text-editor';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs';
@@ -161,7 +161,7 @@ function NewPostDialog() {
           <Plus className="h-4 w-4" /> 글 쓰기
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>새 게시글</DialogTitle>
         </DialogHeader>
@@ -220,7 +220,14 @@ function NewPostDialog() {
           </div>
           <div>
             <Label>내용</Label>
-            <Textarea rows={5} value={form.content_md} onChange={(e) => setForm({ ...form, content_md: e.target.value })} />
+            <div className="mt-1">
+              <RichTextEditor
+                value={form.content_md}
+                onChange={(html) => setForm({ ...form, content_md: html })}
+                placeholder="내용을 입력하세요. 이미지를 복사·붙여넣기 하면 자동 업로드됩니다."
+                minHeight="min-h-[280px]"
+              />
+            </div>
           </div>
         </div>
         <DialogFooter>
