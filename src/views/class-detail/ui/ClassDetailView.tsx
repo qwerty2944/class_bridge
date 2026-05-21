@@ -247,9 +247,7 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                                 xpReward: assignment.xp_reward,
                               })
                             }
-                          >
-                            제출 승인
-                          </Button>
+                          >승인</Button>
                           <QualitySegmented
                             value={sub.quality}
                             onChange={(q) =>
@@ -271,7 +269,11 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                         }
                       >
                         <SelectTrigger className="w-[120px]">
-                          <SelectValue />
+                          <SelectValue>
+                            {(value) =>
+                              ATTENDANCE_LABEL[String(value ?? 'present') as AttendanceStatus] ?? '출석'
+                            }
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {STATUSES.map((st) => (
@@ -499,9 +501,7 @@ function renderSubmissions(
           size="sm"
           variant={sub.quality === 'done' ? 'default' : 'outline'}
           onClick={() => onChange(sub, 'done')}
-        >
-          제출 승인
-        </Button>
+        >승인</Button>
         <QualitySegmented value={sub.quality} onChange={(q) => onChange(sub, q)} />
       </div>
     );

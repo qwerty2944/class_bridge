@@ -284,9 +284,7 @@ function TeacherGrading({
                       quality: 'done',
                     })
                   }
-                >
-                  제출 승인
-                </Button>
+                >승인</Button>
                 <QualitySegmented
                   value={s.quality}
                   onChange={(q) =>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -17,6 +17,9 @@ import {
   ChevronDown,
   Sparkles,
   ShoppingBag,
+  GripVertical,
+  Pencil,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
@@ -32,6 +35,7 @@ import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Separator } from '@/shared/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip';
 import { useTenantStore } from '@/shared/stores/tenant-store';
+import { useNavOrderStore, sortByStoredOrder } from '@/shared/stores/nav-order-store';
 import { createClient } from '@/shared/api/supabase/client';
 import { AssignmentToastListener } from '@/features/assignment-realtime';
 import { JoinRequestToastListener } from '@/features/join-request-realtime';
@@ -96,7 +100,23 @@ export function AppShell({ ctx, children }: { ctx: SessionContext; children: Rea
     [ctx.memberships, activeTenant],
   );
 
-  const items = useMemo(() => NAV.filter((n) => n.roles.some((r) => myRoles.includes(r))), [myRoles]);
+  const itemsBase = useMemo(() => NAV.filter((n) => n.roles.some((r) => myRoles.includes(r))), [myRoles]);
+  const storedOrder = useNavOrderStore((s) => s.order);
+  const setOrder = useNavOrderStore((s) => s.setOrder);
+  const items = useMemo(() => sortByStoredOrder(itemsBase, storedOrder), [itemsBase, storedOrder]);
+
+  // 사이드바 편집 모드 — 드래그로 순서 변경 가능. 토글은 localStorage 에 영구.
+  const [editMode, setEditMode] = useState(false);
+  const dragIdx = useRef<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const reorder = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const next = [...items];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    setOrder(next.map((it) => it.href));
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -164,8 +184,65 @@ export function AppShell({ ctx, children }: { ctx: SessionContext; children: Rea
         </div>
         <Separator />
         <nav className="flex-1 p-2 space-y-1">
-          {items.map((it) => {
+          <div className="flex items-center justify-between px-2 pb-1">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              메뉴
+            </span>
+            <button
+              type="button"
+              onClick={() => setEditMode((v) => !v)}
+              className={cn(
+                'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition',
+                editMode
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:bg-accent',
+              )}
+            >
+              {editMode ? <Check className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
+              {editMode ? '완료' : '편집'}
+            </button>
+          </div>
+          {items.map((it, idx) => {
             const active = pathname === it.href || pathname.startsWith(`${it.href}/`);
+            const isOver = dragOverIdx === idx;
+            if (editMode) {
+              return (
+                <div
+                  key={it.href}
+                  draggable
+                  onDragStart={(e) => {
+                    dragIdx.current = idx;
+                    e.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (dragOverIdx !== idx) setDragOverIdx(idx);
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverIdx === idx) setDragOverIdx(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const from = dragIdx.current;
+                    dragIdx.current = null;
+                    setDragOverIdx(null);
+                    if (from !== null) reorder(from, idx);
+                  }}
+                  onDragEnd={() => {
+                    dragIdx.current = null;
+                    setDragOverIdx(null);
+                  }}
+                  className={cn(
+                    'flex cursor-grab items-center gap-2 rounded-md border border-dashed border-foreground/15 bg-card px-2 py-2 text-sm font-medium transition active:cursor-grabbing',
+                    isOver && 'border-foreground/40 bg-accent',
+                  )}
+                >
+                  <GripVertical className="h-4 w-4 text-muted-foreground" />
+                  <it.icon className="h-4 w-4" /> {it.label}
+                </div>
+              );
+            }
             return (
               <Link
                 key={it.href}

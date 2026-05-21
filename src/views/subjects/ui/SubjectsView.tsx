@@ -24,6 +24,19 @@ import type { Subject } from '@/shared/types/database';
 
 const SUBJECT_COLORS = ['#6366f1', '#ec4899', '#22c55e', '#f59e0b', '#0ea5e9', '#a855f7', '#ef4444', '#14b8a6'];
 
+// 새 과목 추가 시 빠르게 선택할 수 있는 한국 학원 기본 프리셋 — 클릭하면 이름·색상이 자동 채워진다.
+const SUBJECT_PRESETS: { name: string; color: string }[] = [
+  { name: '국어', color: '#ef4444' },
+  { name: '영어', color: '#0ea5e9' },
+  { name: '수학', color: '#6366f1' },
+  { name: '과학', color: '#22c55e' },
+  { name: '사회', color: '#f59e0b' },
+  { name: '한국사', color: '#a855f7' },
+  { name: '한문', color: '#14b8a6' },
+  { name: '음악', color: '#ec4899' },
+  { name: '미술', color: '#9333ea' },
+];
+
 export function SubjectsClient() {
   const { tenantId, has } = useCurrentTenant();
   const qc = useQueryClient();
@@ -137,6 +150,30 @@ function SubjectDialog({ subject, trigger }: { subject?: Subject; trigger?: Reac
           <DialogTitle>{subject ? '과목 수정' : '과목 추가'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
+          {!subject && (
+            <div>
+              <Label>빠른 선택</Label>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {SUBJECT_PRESETS.map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    onClick={() => {
+                      setName(p.name);
+                      setColor(p.color);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs hover:bg-accent transition"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ background: p.color }}
+                    />
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <Label>이름</Label>
             <Input className="mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 수학" />
