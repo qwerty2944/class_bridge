@@ -20,16 +20,18 @@ export interface CharacterColors {
   pant: string;
 }
 
+// SPUM Unity 빌드에서 옵션 파츠는 -1 이 '미장착', 0 은 '프리셋 0번' 이다.
+// 기본 캐릭터는 몸·눈만 보이고 나머지는 아무것도 없는 상태로 시작 → 사용자가 점차 입혀 나감.
 export const DEFAULT_APPEARANCE: CharacterAppearance = {
   bodyIndex: 0,
   eyeIndex: 0,
-  hairIndex: 0,
-  facehairIndex: 0,
-  clothIndex: 0,
-  armorIndex: 0,
-  pantIndex: 0,
-  helmetIndex: 0,
-  backIndex: 0,
+  hairIndex: -1,
+  facehairIndex: -1,
+  clothIndex: -1,
+  armorIndex: -1,
+  pantIndex: -1,
+  helmetIndex: -1,
+  backIndex: -1,
 };
 
 export const DEFAULT_COLORS: CharacterColors = {

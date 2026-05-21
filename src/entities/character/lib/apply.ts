@@ -6,13 +6,19 @@ type SendFn = (method: string, param?: string | number) => void;
 // 1) 인덱스 파라미터는 반드시 string ('0'..'N').
 // 2) 색상은 '#' 없는 6자리 hex.
 // 3) idx < 0 이면 호출 생략 (Unity 에서 해당 파츠를 떼고 싶을 때만 -1 전달).
-// 4) JS_SetEye 는 Unity 에 없음 — 눈은 body 와 묶여 결정됨. eye 색상만 left/right 분리 호출.
+// 4) 무기는 별도 — JS_Clear[Right|Left]Weapon 로 비우고 JS_Set[Right|Left]Weapon(type,idx) 로 장착.
 
 const strip = (hex: string | undefined | null) => (hex ?? '').replace('#', '');
 const ix = (n: number) => Math.trunc(n).toString();
 
 export function applyAppearance(send: SendFn, a: CharacterAppearance) {
+  // 매 적용마다 무기를 먼저 비운다. 이후 CharacterView 의 inventory.equipped 가
+  // applyAssetKey 로 무기를 다시 세팅. 무기 미장착 캐릭터는 깔끔하게 빈손.
+  send('JS_ClearRightWeapon');
+  send('JS_ClearLeftWeapon');
+
   if (a.bodyIndex >= 0) send('JS_SetBody', ix(a.bodyIndex));
+  if (a.eyeIndex >= 0) send('JS_SetEye', ix(a.eyeIndex));
   if (a.hairIndex >= 0) send('JS_SetHair', ix(a.hairIndex));
   if (a.facehairIndex >= 0) send('JS_SetFacehair', ix(a.facehairIndex));
   if (a.clothIndex >= 0) send('JS_SetCloth', ix(a.clothIndex));

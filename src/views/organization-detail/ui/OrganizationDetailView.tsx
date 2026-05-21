@@ -207,8 +207,12 @@ function TeacherRow({
       </div>
       {canManage ? (
         <Select value={teacherRole ?? 'homeroom'} onValueChange={(v) => onChangeRole(v as TeacherRole)}>
-          <SelectTrigger className="h-7 w-[84px] text-xs">
-            <SelectValue />
+          <SelectTrigger className="h-7 w-[90px] text-xs">
+            <SelectValue>
+              {(value) =>
+                TEACHER_ROLE_LABEL[(String(value ?? 'homeroom')) as TeacherRole] ?? '담임'
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="homeroom">담임</SelectItem>
@@ -299,7 +303,11 @@ function AddOrgMemberDialog({ orgId, role }: { orgId: string; role: OrgRole }) {
               <Label>등급</Label>
               <Select value={teacherRole} onValueChange={(v) => setTeacherRole(v as TeacherRole)}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>
+                    {(value) =>
+                      TEACHER_ROLE_LABEL[(String(value ?? 'homeroom')) as TeacherRole] ?? '담임'
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="homeroom">담임</SelectItem>

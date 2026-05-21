@@ -12,16 +12,16 @@ import { updateCharacter } from '@/entities/character';
 import type { CharacterAppearance, CharacterColors } from '@/shared/unity/types';
 
 // Unity 에 실제 send 되는 키만 노출 (entities/character/lib/apply.ts 와 동기).
-// eyeIndex 는 JS_SetEye 가 없어 입력해도 무용이므로 제외.
-const NUMERIC_FIELDS: { key: keyof CharacterAppearance; label: string; max: number }[] = [
-  { key: 'bodyIndex', label: '몸', max: 5 },
-  { key: 'hairIndex', label: '머리', max: 15 },
-  { key: 'facehairIndex', label: '얼굴털', max: 10 },
-  { key: 'clothIndex', label: '옷', max: 10 },
-  { key: 'armorIndex', label: '갑옷', max: 10 },
-  { key: 'pantIndex', label: '바지', max: 8 },
-  { key: 'helmetIndex', label: '투구', max: 6 },
-  { key: 'backIndex', label: '망토', max: 5 },
+// optional=true 인 부위는 -1 ('없음') 옵션이 맨 위에 들어간다. 몸은 SPUM 필수 파츠라 항상 있어야 함.
+const NUMERIC_FIELDS: { key: keyof CharacterAppearance; label: string; max: number; optional: boolean }[] = [
+  { key: 'bodyIndex', label: '몸', max: 5, optional: false },
+  { key: 'hairIndex', label: '머리', max: 15, optional: true },
+  { key: 'facehairIndex', label: '얼굴털', max: 10, optional: true },
+  { key: 'clothIndex', label: '옷', max: 10, optional: true },
+  { key: 'armorIndex', label: '갑옷', max: 10, optional: true },
+  { key: 'pantIndex', label: '바지', max: 8, optional: true },
+  { key: 'helmetIndex', label: '투구', max: 6, optional: true },
+  { key: 'backIndex', label: '망토', max: 5, optional: true },
 ];
 
 const COLOR_FIELDS: { key: keyof CharacterColors; label: string }[] = [
@@ -74,9 +74,19 @@ export function AppearanceEditor({
                 }}
               >
                 <SelectTrigger className="mt-1">
-                  <SelectValue />
+                  <SelectValue>
+                    {(value) => {
+                      const s = String(value ?? '');
+                      if (s === '-1') return '없음';
+                      const n = Number(s);
+                      return Number.isFinite(n) ? `${n + 1}번` : '없음';
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
+                  {f.optional && (
+                    <SelectItem value="-1">없음</SelectItem>
+                  )}
                   {Array.from({ length: f.max + 1 }, (_, i) => (
                     <SelectItem key={i} value={String(i)}>
                       {i + 1}번
