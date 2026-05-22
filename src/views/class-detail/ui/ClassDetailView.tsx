@@ -282,15 +282,15 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
         </CardContent>
       </Card>
 
-      {/* 과제 점검 카드 — '이번 수업 과제' + '지난 과제 점검' 각각 + 로 추가. */}
+      {/* 과제 카드 — 이번 수업 과제와 지난 과제 점검. '점검' 표현은 과거 과제 섹션에만 사용. */}
       {canEdit && tenantId && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5 text-muted-foreground" /> 과제 점검
+              <ClipboardList className="h-5 w-5 text-muted-foreground" /> 과제
             </CardTitle>
             <CardDescription>
-              이번 수업에서 나가는 과제와, 지난 수업의 과제를 점검합니다.
+              이번 수업에서 나가는 과제와, 지난 수업의 과제 점검을 관리합니다.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -439,6 +439,12 @@ function ThisSessionAssignments({
                 </p>
               )}
             </div>
+            <Link
+              href={`/assignments/${a.id}`}
+              className="shrink-0 rounded-md border bg-background px-2 py-1 text-xs hover:bg-accent transition"
+            >
+              과제 상세 →
+            </Link>
             <Button
               size="icon-sm"
               variant="ghost"

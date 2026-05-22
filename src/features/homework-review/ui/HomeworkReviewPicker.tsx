@@ -179,16 +179,24 @@ export function HomeworkReviewPicker({
 
       {hwQ.data && (
         <div className="rounded-md border bg-muted/30 p-3 text-sm">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium">{hwQ.data.title}</span>
-            {hwQ.data.xp_reward > 0 && (
-              <Badge variant="secondary">완료 시 +{hwQ.data.xp_reward} XP</Badge>
-            )}
-            {hwQ.data.due_at && (
-              <span className="text-xs text-muted-foreground">
-                마감: {new Date(hwQ.data.due_at).toLocaleString('ko-KR')}
-              </span>
-            )}
+          <div className="flex items-start gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+              <span className="font-medium">{hwQ.data.title}</span>
+              {hwQ.data.xp_reward > 0 && (
+                <Badge variant="secondary">완료 시 +{hwQ.data.xp_reward} XP</Badge>
+              )}
+              {hwQ.data.due_at && (
+                <span className="text-xs text-muted-foreground">
+                  마감: {new Date(hwQ.data.due_at).toLocaleString('ko-KR')}
+                </span>
+              )}
+            </div>
+            <Link
+              href={`/assignments/${hwQ.data.id}`}
+              className="shrink-0 rounded-md border bg-background px-2 py-1 text-xs hover:bg-accent transition"
+            >
+              과제 상세 →
+            </Link>
           </div>
           {hwQ.data.description_md && (
             <p className="mt-1.5 whitespace-pre-wrap text-xs text-muted-foreground">
