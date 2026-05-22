@@ -391,10 +391,10 @@ function TeacherGrading({
 
 // 과제 점검 4단계 segmented control — 수업 출결 / 지난 과제 점검 / 과제 상세 어디서든 재사용.
 const QUALITY_OPTIONS: { value: SubmissionQuality; label: string; tone: string }[] = [
-  { value: 'none', label: '안 햇음', tone: 'bg-muted text-foreground' },
-  { value: 'partial', label: '햇는데 미흡', tone: 'bg-amber-500 text-white' },
-  { value: 'done', label: '햇음', tone: 'bg-emerald-500 text-white' },
-  { value: 'excellent', label: '아주 잘 햇음', tone: 'bg-indigo-600 text-white' },
+  { value: 'none', label: '안 했음', tone: 'bg-muted text-foreground' },
+  { value: 'partial', label: '했는데 미흡', tone: 'bg-amber-500 text-white' },
+  { value: 'done', label: '했음', tone: 'bg-emerald-500 text-white' },
+  { value: 'excellent', label: '아주 잘 했음', tone: 'bg-indigo-600 text-white' },
 ];
 
 export function QualitySegmented({

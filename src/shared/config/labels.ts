@@ -30,10 +30,10 @@ export const SUBMISSION_LABEL: Record<SubmissionStatus, string> = {
 
 // 과제 점검 4단계 — XP 배수: none=0, partial=0.5, done=1, excellent=1.5
 export const SUBMISSION_QUALITY_LABEL: Record<SubmissionQuality, string> = {
-  none: '안 햇음',
-  partial: '햇는데 미흡',
-  done: '햇음',
-  excellent: '아주 잘 햇음',
+  none: '안 했음',
+  partial: '했는데 미흡',
+  done: '했음',
+  excellent: '아주 잘 했음',
 };
 
 export const CATEGORY_LABEL: Record<PostCategory, string> = {
