@@ -59,6 +59,7 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight }: Prop
     editorProps: {
       attributes: {
         class: cn('rich-content px-3 py-2 outline-none', minHeight ?? 'min-h-[140px]'),
+        spellcheck: 'false',
       },
       // 붙여넣기에 이미지가 있으면 엣지함수로 업로드해 삽입 (텍스트 paste 는 기본 동작).
       handlePaste: (_view, event) => {
