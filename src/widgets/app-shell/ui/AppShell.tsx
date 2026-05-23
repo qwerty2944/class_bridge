@@ -15,15 +15,13 @@ import {
   MessageSquare,
   Settings,
   LogOut,
-  ChevronDown,
   Sparkles,
   ShoppingBag,
   GripVertical,
   Pencil,
   Check,
+  Plus,
 } from 'lucide-react';
-import { Button } from '@/shared/ui/button';
-import { Badge } from '@/shared/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -129,60 +127,91 @@ export function AppShell({ ctx, children }: { ctx: SessionContext; children: Rea
   if (!activeTenant) return null;
   const displayName = ctx.profile?.full_name || ctx.profile?.email || '사용자';
 
+  // 같은 tenant 의 멤버십 중복 제거 — rail 표시용.
+  const uniqueMemberships = useMemo(
+    () =>
+      ctx.memberships.filter(
+        (m, i, arr) => arr.findIndex((x) => x.tenant_id === m.tenant_id) === i,
+      ),
+    [ctx.memberships],
+  );
+
   return (
     <div className="min-h-screen flex bg-muted/20">
-      <aside className="hidden md:flex w-64 shrink-0 flex-col border-r bg-card">
-        {/* Tenant switcher */}
-        <div className="p-3">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="w-full flex items-center gap-3 rounded-lg border bg-background p-3 hover:bg-accent transition">
-                <span
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md text-white text-sm font-semibold"
-                  style={{ background: 'linear-gradient(135deg,#6366f1,#ec4899)' }}
-                >
-                  {initial(activeTenant.tenant.name)}
-                </span>
-                <span className="flex-1 text-left overflow-hidden">
-                  <span className="block truncate text-sm font-semibold">{activeTenant.tenant.name}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {activeTenant.tenant.type === 'tutor' ? '과외' : '학원'} · {ROLE_LABEL[activeTenant.role]}
-                  </span>
-                </span>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-60" align="start">
-              <DropdownMenuLabel>학원 전환</DropdownMenuLabel>
-              {ctx.memberships
-                .filter((m, i, arr) => arr.findIndex((x) => x.tenant_id === m.tenant_id) === i)
-                .map((m) => (
-                  <DropdownMenuItem
-                    key={m.tenant_id}
+      {/* Slack 스타일 테넌트 rail — 좌측 좁은 column. 한 번 클릭으로 학원/스터디/과외 전환. */}
+      <aside className="hidden md:flex w-14 shrink-0 flex-col items-center border-r bg-muted/30 py-3 gap-2">
+        {uniqueMemberships.map((m) => {
+          const isActive = m.tenant_id === currentTenantId;
+          return (
+            <Tooltip key={m.tenant_id}>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
                     onClick={() => setTenant(m.tenant_id)}
-                    className={cn('flex justify-between', m.tenant_id === currentTenantId && 'bg-accent')}
+                    aria-label={m.tenant.name}
+                    className={cn(
+                      'relative inline-flex h-10 w-10 items-center justify-center rounded-lg text-sm font-semibold text-white transition',
+                      isActive
+                        ? 'ring-2 ring-foreground ring-offset-2 ring-offset-muted/30'
+                        : 'opacity-80 hover:opacity-100',
+                    )}
+                    style={{
+                      background:
+                        'linear-gradient(135deg,#6366f1,#ec4899)',
+                    }}
                   >
-                    <span className="truncate">{m.tenant.name}</span>
-                    <Badge variant="secondary" className="ml-2 text-xs">
-                      {ROLE_LABEL[m.role]}
-                    </Badge>
-                  </DropdownMenuItem>
-                ))}
-              <DropdownMenuSeparator />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <DropdownMenuItem asChild>
-                      <Link href="/setup">+ 학원 추가 / 합류</Link>
-                    </DropdownMenuItem>
-                  }
-                />
-                <TooltipContent side="right">
-                  &lsquo;합류&rsquo;는 이미 운영 중인 다른 학원에 들어가는 것을 말해요.
-                </TooltipContent>
-              </Tooltip>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    {initial(m.tenant.name)}
+                    {isActive && (
+                      <span className="absolute -left-3 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r bg-foreground" />
+                    )}
+                  </button>
+                }
+              />
+              <TooltipContent side="right">
+                <p className="font-medium">{m.tenant.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {m.tenant.type === 'tutor' ? '과외' : '학원'} ·{' '}
+                  {ROLE_LABEL[m.role]}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Link
+                href="/setup"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-dashed border-foreground/30 text-foreground/60 hover:bg-accent transition"
+                aria-label="학원 추가 / 합류"
+              >
+                <Plus className="h-5 w-5" />
+              </Link>
+            }
+          />
+          <TooltipContent side="right">학원/스터디/과외 추가·합류</TooltipContent>
+        </Tooltip>
+      </aside>
+
+      <aside className="hidden md:flex w-64 shrink-0 flex-col border-r bg-card">
+        {/* 현재 테넌트 정보 — 전환은 rail 에서 */}
+        <div className="p-3">
+          <div className="w-full flex items-center gap-3 rounded-lg border bg-background p-3">
+            <span
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-white text-sm font-semibold shrink-0"
+              style={{ background: 'linear-gradient(135deg,#6366f1,#ec4899)' }}
+            >
+              {initial(activeTenant.tenant.name)}
+            </span>
+            <span className="flex-1 text-left overflow-hidden">
+              <span className="block truncate text-sm font-semibold">{activeTenant.tenant.name}</span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {activeTenant.tenant.type === 'tutor' ? '과외' : '학원'} ·{' '}
+                {ROLE_LABEL[activeTenant.role]}
+              </span>
+            </span>
+          </div>
         </div>
         <Separator />
         <nav className="flex-1 p-2 space-y-1">

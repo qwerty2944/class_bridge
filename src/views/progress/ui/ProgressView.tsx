@@ -8,7 +8,6 @@ import { Card, CardContent } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
-import { Textarea } from '@/shared/ui/textarea';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
@@ -24,6 +23,8 @@ import { OrgPicker } from '@/features/org-pick';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { createProgress, deleteProgress, fetchProgress } from '@/entities/progress';
 import { fetchSubjects } from '@/entities/subject';
+import { fetchClassSessions } from '@/entities/class-session';
+import { RichTextEditor, RichContent } from '@/features/rich-text-editor';
 
 export function ProgressClient({ initialOrgId }: { initialOrgId: string | null }) {
   const { has, userId } = useCurrentTenant();
@@ -92,7 +93,9 @@ export function ProgressClient({ initialOrgId }: { initialOrgId: string | null }
                           )}
                         </h3>
                         {p.content_md && (
-                          <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{p.content_md}</p>
+                          <div className="mt-1 text-sm">
+                            <RichContent html={p.content_md} />
+                          </div>
                         )}
                       </div>
                       {(has('director') || has('teacher')) && (
@@ -123,6 +126,12 @@ function NewProgressDialog({ orgId, userId }: { orgId: string; userId: string | 
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const subjectsQ = useQuery({ queryKey: ['subjects', tenantId], enabled: !!tenantId && open, queryFn: () => fetchSubjects(tenantId!) });
+  // 같은 반의 수업 목록 — '수업 내용 불러오기' 용. dialog 열릴 때 한 번 fetch.
+  const sessionsQ = useQuery({
+    queryKey: ['class-sessions', orgId],
+    enabled: !!orgId && open,
+    queryFn: () => fetchClassSessions(orgId),
+  });
   const [form, setForm] = useState({
     record_date: new Date().toISOString().slice(0, 10),
     chapter: '',
@@ -131,7 +140,26 @@ function NewProgressDialog({ orgId, userId }: { orgId: string; userId: string | 
     content_md: '',
     subject_id: null as string | null,
   });
+  const [pickedSessionId, setPickedSessionId] = useState<string>('');
   const [busy, setBusy] = useState(false);
+
+  const importFromSession = () => {
+    const sess = sessionsQ.data?.find((s) => s.id === pickedSessionId);
+    if (!sess) return;
+    if (
+      (form.chapter || form.content_md) &&
+      !confirm('현재 입력한 내용을 덮어쓸까요?')
+    )
+      return;
+    setForm({
+      ...form,
+      record_date: sess.session_date,
+      subject_id: sess.subject_id ?? form.subject_id,
+      chapter: sess.topic ?? form.chapter,
+      content_md: sess.content_md ?? form.content_md,
+    });
+    toast.success('수업 내용을 불러왔습니다');
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -161,11 +189,53 @@ function NewProgressDialog({ orgId, userId }: { orgId: string; userId: string | 
           <Plus className="h-4 w-4" /> 진도 추가
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>진도 기록</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
+          {/* 수업 내용 불러오기 — 같은 반의 기존 수업을 골라 form 에 prefill. */}
+          {(sessionsQ.data?.length ?? 0) > 0 && (
+            <div className="rounded-md border bg-muted/30 p-3 flex items-center gap-2 flex-wrap">
+              <Label className="shrink-0">수업에서 불러오기</Label>
+              <Select value={pickedSessionId} onValueChange={(v) => setPickedSessionId(v ?? '')}>
+                <SelectTrigger className="flex-1 min-w-[200px]">
+                  <SelectValue placeholder="수업 선택">
+                    {(val) => {
+                      const v = String(val ?? '');
+                      if (!v) return '수업 선택';
+                      const s = sessionsQ.data?.find((x) => x.id === v);
+                      return s
+                        ? `${new Date(s.session_date).toLocaleDateString('ko-KR')} · ${s.topic ?? '수업'}`
+                        : '수업 선택';
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {sessionsQ.data?.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm">{s.topic ?? '수업'}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {new Date(s.session_date).toLocaleDateString('ko-KR')}
+                          {s.subject ? ` · ${s.subject.name}` : ''}
+                        </p>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={importFromSession}
+                disabled={!pickedSessionId}
+              >
+                불러오기
+              </Button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>날짜</Label>
@@ -175,7 +245,13 @@ function NewProgressDialog({ orgId, userId }: { orgId: string; userId: string | 
               <Label>과목</Label>
               <Select value={form.subject_id ?? '__none'} onValueChange={(v) => setForm({ ...form, subject_id: v === '__none' ? null : v })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="선택" />
+                  <SelectValue placeholder="선택">
+                    {(val) => {
+                      const v = String(val ?? '');
+                      if (!v || v === '__none') return '미지정';
+                      return subjectsQ.data?.find((s) => s.id === v)?.name ?? '미지정';
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">미지정</SelectItem>
@@ -204,7 +280,14 @@ function NewProgressDialog({ orgId, userId }: { orgId: string; userId: string | 
           </div>
           <div>
             <Label>내용</Label>
-            <Textarea rows={3} value={form.content_md} onChange={(e) => setForm({ ...form, content_md: e.target.value })} />
+            <div className="mt-1">
+              <RichTextEditor
+                value={form.content_md}
+                onChange={(html) => setForm({ ...form, content_md: html })}
+                placeholder="이번 진도에 다룬 내용. 이미지를 붙여넣으면 자동 업로드됩니다."
+                minHeight="min-h-[240px]"
+              />
+            </div>
           </div>
         </div>
         <DialogFooter>
