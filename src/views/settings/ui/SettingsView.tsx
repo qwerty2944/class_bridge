@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Copy } from 'lucide-react';
+import { Check, Copy, Pencil, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -21,6 +21,11 @@ export function SettingsClient() {
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [busy, setBusy] = useState(false);
 
+  const isDirector = roles.includes('director');
+  const [editingTenantName, setEditingTenantName] = useState(false);
+  const [tenantName, setTenantName] = useState(tenant?.name ?? '');
+  const [tenantBusy, setTenantBusy] = useState(false);
+
   const save = async () => {
     if (!profile) return;
     setBusy(true);
@@ -29,6 +34,17 @@ export function SettingsClient() {
     if (error) return toast.error(error.message);
     qc.invalidateQueries({ queryKey: ['profile', profile.id] });
     toast.success('저장됨');
+  };
+
+  const saveTenantName = async () => {
+    if (!tenantId || !tenantName.trim()) return;
+    setTenantBusy(true);
+    const { error } = await supabase.from('tenants').update({ name: tenantName.trim() }).eq('id', tenantId);
+    setTenantBusy(false);
+    if (error) return toast.error(error.message);
+    qc.invalidateQueries();
+    toast.success('학원 이름이 변경되었습니다');
+    setEditingTenantName(false);
   };
 
   return (
@@ -67,7 +83,59 @@ export function SettingsClient() {
           <CardContent className="space-y-3">
             <div>
               <Label>학원</Label>
-              <p className="mt-1 font-medium">{tenant?.name ?? '—'}</p>
+              {editingTenantName && isDirector ? (
+                <div className="mt-1 flex items-center gap-1.5">
+                  <Input
+                    autoFocus
+                    value={tenantName}
+                    onChange={(e) => setTenantName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveTenantName();
+                      if (e.key === 'Escape') {
+                        setEditingTenantName(false);
+                        setTenantName(tenant?.name ?? '');
+                      }
+                    }}
+                  />
+                  <Button
+                    size="icon-sm"
+                    onClick={saveTenantName}
+                    disabled={tenantBusy || !tenantName.trim()}
+                    aria-label="저장"
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setEditingTenantName(false);
+                      setTenantName(tenant?.name ?? '');
+                    }}
+                    aria-label="취소"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="mt-1 flex items-center gap-2">
+                  <p className="font-medium">{tenant?.name ?? '—'}</p>
+                  {isDirector && (
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setTenantName(tenant?.name ?? '');
+                        setEditingTenantName(true);
+                      }}
+                      title="학원 이름 수정"
+                      aria-label="학원 이름 수정"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <Label>유형</Label>
