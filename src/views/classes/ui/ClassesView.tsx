@@ -510,37 +510,20 @@ function NewSessionDialog({
                 </p>
               )}
               {reviewIds.map((aid) => (
-                <div key={aid} className="rounded-md border bg-background p-3 relative">
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    className="absolute top-1 right-1"
-                    onClick={() => setReviewIds((arr) => arr.filter((x) => x !== aid))}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                <div key={aid} className="rounded-md border bg-background p-3">
                   <HomeworkReviewPicker
                     orgId={form.organization_id}
                     tenantId={tenantId}
                     value={aid}
+                    onRemove={() => setReviewIds((arr) => arr.filter((x) => x !== aid))}
                   />
                 </div>
               ))}
               {Array.from({ length: reviewDraftCount }).map((_, idx) => (
                 <div
                   key={`draft-${idx}`}
-                  className="rounded-md border border-dashed bg-background p-3 relative"
+                  className="rounded-md border border-dashed bg-background p-3"
                 >
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    className="absolute top-1 right-1"
-                    onClick={() => setReviewDraftCount((n) => Math.max(0, n - 1))}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
                   <HomeworkReviewPicker
                     orgId={form.organization_id}
                     tenantId={tenantId}
@@ -551,6 +534,7 @@ function NewSessionDialog({
                         setReviewDraftCount((n) => Math.max(0, n - 1));
                       }
                     }}
+                    onRemove={() => setReviewDraftCount((n) => Math.max(0, n - 1))}
                   />
                 </div>
               ))}

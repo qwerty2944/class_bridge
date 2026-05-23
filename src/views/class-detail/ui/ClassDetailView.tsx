@@ -644,34 +644,19 @@ function PastReviews({
       )}
 
       {reviewIds.map((aid) => (
-        <div key={aid} className="rounded-lg border bg-card p-3 relative">
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            className="absolute top-2 right-2"
-            onClick={() => remove.mutate(aid)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+        <div key={aid} className="rounded-lg border bg-card p-3">
           <HomeworkReviewPicker
             orgId={orgId}
             tenantId={tenantId}
             currentSessionId={sessionId}
             value={aid}
+            onRemove={() => remove.mutate(aid)}
           />
         </div>
       ))}
 
       {drafts.map((d) => (
-        <div key={d.key} className="rounded-lg border border-dashed bg-muted/20 p-3 relative">
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            className="absolute top-2 right-2"
-            onClick={() => removeRow(d.key)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+        <div key={d.key} className="rounded-lg border border-dashed bg-muted/20 p-3">
           <HomeworkReviewPicker
             orgId={orgId}
             tenantId={tenantId}
@@ -683,6 +668,7 @@ function PastReviews({
                 removeRow(d.key);
               }
             }}
+            onRemove={() => removeRow(d.key)}
           />
         </div>
       ))}

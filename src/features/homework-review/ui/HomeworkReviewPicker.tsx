@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { X } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -35,6 +36,8 @@ export function HomeworkReviewPicker({
   currentSessionId,
   value,
   onChange,
+  onRemove,
+  removeLabel = '점검 해제',
   emptyHint = '점검할 과제가 없습니다.',
 }: {
   orgId: string;
@@ -42,6 +45,9 @@ export function HomeworkReviewPicker({
   currentSessionId?: string;
   value?: string | null;
   onChange?: (assignmentId: string | null) => void;
+  /** 우측 X 버튼을 노출. 클릭 시 호출. 없으면 X 자체가 안 그려짐. */
+  onRemove?: () => void;
+  removeLabel?: string;
   emptyHint?: string;
 }) {
   const qc = useQueryClient();
@@ -156,29 +162,42 @@ export function HomeworkReviewPicker({
 
   return (
     <div className="space-y-3">
-      <Select
-        value={selectedAssignmentId}
-        onValueChange={(v) => v && onChange?.(v)}
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue>
-            {(val) => {
-              const a = eligible.find((o) => o.id === String(val ?? ''));
-              return a ? triggerLabel(a) : '과제 선택';
-            }}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent className="max-h-[300px]">
-          {eligible.map((a) => (
-            <SelectItem key={a.id} value={a.id}>
-              <div className="min-w-0">
-                <p className="truncate text-sm">{a.title}</p>
-                <p className="truncate text-[11px] text-muted-foreground">{subLabel(a)}</p>
-              </div>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className="flex items-center gap-2">
+        <Select
+          value={selectedAssignmentId}
+          onValueChange={(v) => v && onChange?.(v)}
+        >
+          <SelectTrigger className="w-full flex-1">
+            <SelectValue>
+              {(val) => {
+                const a = eligible.find((o) => o.id === String(val ?? ''));
+                return a ? triggerLabel(a) : '과제 선택';
+              }}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent className="max-h-[300px]">
+            {eligible.map((a) => (
+              <SelectItem key={a.id} value={a.id}>
+                <div className="min-w-0">
+                  <p className="truncate text-sm">{a.title}</p>
+                  <p className="truncate text-[11px] text-muted-foreground">{subLabel(a)}</p>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {onRemove && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={onRemove}
+            aria-label={removeLabel}
+            title={removeLabel}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
 
       {hwQ.data && (
         <div className="rounded-md border bg-muted/30 p-3 text-sm">
