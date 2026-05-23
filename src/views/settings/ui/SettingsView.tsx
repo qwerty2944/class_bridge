@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Check, Copy, Pencil, X } from 'lucide-react';
@@ -16,10 +17,18 @@ import { ROLE_LABEL } from '@/shared/types/database';
 export function SettingsClient() {
   const { tenantId, tenant, roles, profile } = useCurrentTenant();
   const qc = useQueryClient();
+  const router = useRouter();
   const supabase = createClient();
   const [name, setName] = useState(profile?.full_name ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [busy, setBusy] = useState(false);
+  // profile 이 SSR 후 늦게 들어올 수 있어 한 번만 lazy sync.
+  const [hydrated, setHydrated] = useState(!!profile);
+  if (profile && !hydrated) {
+    setHydrated(true);
+    setName(profile.full_name ?? '');
+    setPhone(profile.phone ?? '');
+  }
 
   const isDirector = roles.includes('director');
   const [editingTenantName, setEditingTenantName] = useState(false);
@@ -29,10 +38,14 @@ export function SettingsClient() {
   const save = async () => {
     if (!profile) return;
     setBusy(true);
-    const { error } = await supabase.from('profiles').update({ full_name: name, phone }).eq('id', profile.id);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ full_name: name.trim() || null, phone: phone.trim() || null })
+      .eq('id', profile.id);
     setBusy(false);
     if (error) return toast.error(error.message);
     qc.invalidateQueries({ queryKey: ['profile', profile.id] });
+    router.refresh();  // 사이드바 user 영역 등 SSR 갱신
     toast.success('저장됨');
   };
 
@@ -43,6 +56,7 @@ export function SettingsClient() {
     setTenantBusy(false);
     if (error) return toast.error(error.message);
     qc.invalidateQueries();
+    router.refresh();
     toast.success('학원 이름이 변경되었습니다');
     setEditingTenantName(false);
   };
