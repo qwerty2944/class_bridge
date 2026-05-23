@@ -25,7 +25,13 @@ export function OrgPicker({
   return (
     <Select value={value ?? ''} onValueChange={(v) => onChange(v || null)}>
       <SelectTrigger className="w-[220px]">
-        <SelectValue placeholder={placeholder} />
+        <SelectValue placeholder={placeholder}>
+          {(val) => {
+            const v = String(val ?? '');
+            if (!v) return placeholder;
+            return orgsQ.data?.find((o) => o.id === v)?.name ?? placeholder;
+          }}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {orgsQ.data?.length === 0 && (

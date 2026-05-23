@@ -53,7 +53,7 @@ export function ShopClient() {
       <header className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
-            <ShoppingBag className="h-6 w-6 text-pink-500" /> 상점
+            <ShoppingBag className="h-6 w-6 text-pink-500" /> 캐릭터 상점
           </h1>
           <p className="text-sm text-muted-foreground">
             {isDirector ? '학원 상점 카탈로그를 관리합니다.' : '코인으로 아이템을 구매해 캐릭터에 장착하세요.'}

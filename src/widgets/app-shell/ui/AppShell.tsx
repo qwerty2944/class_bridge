@@ -62,7 +62,7 @@ const NAV: NavItem[] = [
   { href: '/progress', label: '진도', icon: TrendingUp, roles: ['director', 'teacher', 'student', 'parent'] },
   { href: '/board', label: '게시판', icon: MessageSquare, roles: ['director', 'teacher', 'student', 'parent'] },
   { href: '/character', label: '캐릭터', icon: Sparkles, roles: ['student', 'parent', 'teacher', 'director'] },
-  { href: '/shop', label: '상점', icon: ShoppingBag, roles: ['student', 'director'] },
+  { href: '/shop', label: '캐릭터 상점', icon: ShoppingBag, roles: ['student', 'director'] },
   { href: '/organizations', label: '반·조직', icon: GraduationCap, roles: ['director', 'teacher'] },
   { href: '/subjects', label: '과목', icon: BookOpen, roles: ['director', 'teacher'] },
   { href: '/members', label: '회원', icon: Users, roles: ['director'] },

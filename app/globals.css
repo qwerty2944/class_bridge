@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* frappe-gantt CSS: 패키지 exports 가 style 조건 만 노출하는데 Turbopack 이 못 풀어 로컬 복사본을 import. */
+@import "../src/views/assignments/ui/frappe-gantt.css";
 
 @custom-variant dark (&:is(.dark *));
 

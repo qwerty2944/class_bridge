@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ClipboardList, Plus, CalendarClock } from 'lucide-react';
+import { ClipboardList, Plus, CalendarClock, LayoutGrid, BarChart3 } from 'lucide-react';
 import { Card, CardContent } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -30,6 +30,8 @@ import {
 import { fetchOrganizations, fetchOrganizationsForUser } from '@/entities/organization';
 import type { OrgWithSubject } from '@/entities/organization';
 import { fetchSubjects } from '@/entities/subject';
+import { cn } from '@/shared/lib/utils';
+import { AssignmentsGantt } from './AssignmentsGantt';
 
 type StatusFilter = 'all' | 'open' | 'closed';
 const STATUS_TABS: { value: StatusFilter; label: string }[] = [
@@ -62,6 +64,7 @@ export function AssignmentsClient({ initialOrgId }: { initialOrgId: string | nul
 
   const [orgFilter, setOrgFilter] = useState<string>(initialOrgId ?? 'all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'gantt'>('list');
 
   // 마운트 시점 기준 시각 — 렌더 중 Date.now() 직접 호출을 피하려 lazy state 로 고정.
   const [now] = useState(() => Date.now());
@@ -92,38 +95,62 @@ export function AssignmentsClient({ initialOrgId }: { initialOrgId: string | nul
         )}
       </header>
 
-      {/* 필터 */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={orgFilter} onValueChange={(v) => setOrgFilter(v ?? 'all')}>
-          <SelectTrigger className="w-44">
-            <SelectValue>
-              {(value) => {
-                const v = String(value ?? '');
-                if (!v || v === 'all') return '전체 반';
-                return orgs.find((o) => o.id === v)?.name ?? '전체 반';
-              }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">전체 반</SelectItem>
-            {orgs.map((o) => (
-              <SelectItem key={o.id} value={o.id}>
-                {o.name}
-              </SelectItem>
+      {/* 필터 + 뷰 토글 */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={orgFilter} onValueChange={(v) => setOrgFilter(v ?? 'all')}>
+            <SelectTrigger className="w-44">
+              <SelectValue>
+                {(value) => {
+                  const v = String(value ?? '');
+                  if (!v || v === 'all') return '전체 반';
+                  return orgs.find((o) => o.id === v)?.name ?? '전체 반';
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">전체 반</SelectItem>
+              {orgs.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex gap-1">
+            {STATUS_TABS.map((t) => (
+              <Button
+                key={t.value}
+                size="sm"
+                variant={statusFilter === t.value ? 'default' : 'outline'}
+                onClick={() => setStatusFilter(t.value)}
+              >
+                {t.label}
+              </Button>
             ))}
-          </SelectContent>
-        </Select>
-        <div className="flex gap-1">
-          {STATUS_TABS.map((t) => (
-            <Button
-              key={t.value}
-              size="sm"
-              variant={statusFilter === t.value ? 'default' : 'outline'}
-              onClick={() => setStatusFilter(t.value)}
-            >
-              {t.label}
-            </Button>
-          ))}
+          </div>
+        </div>
+        <div className="inline-flex overflow-hidden rounded-md border bg-background text-sm">
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-3 py-1.5 transition',
+              viewMode === 'list' ? 'bg-foreground text-background' : 'hover:bg-accent',
+            )}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" /> 리스트
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('gantt')}
+            className={cn(
+              'inline-flex items-center gap-1.5 border-l px-3 py-1.5 transition',
+              viewMode === 'gantt' ? 'bg-foreground text-background' : 'hover:bg-accent',
+            )}
+          >
+            <BarChart3 className="h-3.5 w-3.5" /> 간트
+          </button>
         </div>
       </div>
 
@@ -135,6 +162,8 @@ export function AssignmentsClient({ initialOrgId }: { initialOrgId: string | nul
             소속된 반이 없습니다.
           </CardContent>
         </Card>
+      ) : viewMode === 'gantt' ? (
+        <AssignmentsGantt assignments={filtered} />
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center text-sm text-muted-foreground">

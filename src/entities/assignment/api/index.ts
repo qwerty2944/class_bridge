@@ -23,11 +23,12 @@ export async function fetchAssignments(orgId: string): Promise<AssignmentWithSub
 }
 
 // 여러 반의 과제를 한 번에 조회 (과제 화면 카드+필터용).
+// 간트차트가 progress 를 계산하기 위해 submissions(status 만) 도 같이 가져옴.
 export async function fetchAssignmentsByOrgs(orgIds: string[]): Promise<AssignmentWithRefs[]> {
   if (!orgIds.length) return [];
   const { data, error } = await sb()
     .from('assignments')
-    .select('*, subject:subjects(*), organization:organizations(*)')
+    .select('*, subject:subjects(*), organization:organizations(*), submissions:assignment_submissions(id, status)')
     .in('organization_id', orgIds)
     .order('created_at', { ascending: false });
   if (error) throw error;
