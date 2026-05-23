@@ -69,14 +69,14 @@ export function HomeworkReviewPicker({
     );
   }, [assignmentsQ.data, currentSessionId]);
 
-  const labelOf = (a: NonNullable<typeof assignmentsQ.data>[number]) => {
+  // 트리거에 한 줄로 들어갈 짧은 라벨 — 제목 위주.
+  const triggerLabel = (a: NonNullable<typeof assignmentsQ.data>[number]) => a.title;
+  // 옵션 아이템의 sub 라벨 — 수업 날짜·주제. 없으면 '수업 미지정'.
+  const subLabel = (a: NonNullable<typeof assignmentsQ.data>[number]): string => {
     const sess = a.source_session_id ? sessionById.get(a.source_session_id) : null;
-    if (sess) {
-      const date = new Date(sess.session_date).toLocaleDateString('ko-KR');
-      const topic = sess.topic ?? '수업';
-      return `${date} · ${topic} — ${a.title}`;
-    }
-    return a.title;
+    if (!sess) return '수업 미지정';
+    const date = new Date(sess.session_date).toLocaleDateString('ko-KR');
+    return `${date} · ${sess.topic ?? '수업'}`;
   };
 
   const controlled = value !== undefined;
@@ -160,18 +160,21 @@ export function HomeworkReviewPicker({
         value={selectedAssignmentId}
         onValueChange={(v) => v && onChange?.(v)}
       >
-        <SelectTrigger>
+        <SelectTrigger className="w-full">
           <SelectValue>
             {(val) => {
               const a = eligible.find((o) => o.id === String(val ?? ''));
-              return a ? labelOf(a) : '과제 선택';
+              return a ? triggerLabel(a) : '과제 선택';
             }}
           </SelectValue>
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="max-h-[300px]">
           {eligible.map((a) => (
             <SelectItem key={a.id} value={a.id}>
-              {labelOf(a)}
+              <div className="min-w-0">
+                <p className="truncate text-sm">{a.title}</p>
+                <p className="truncate text-[11px] text-muted-foreground">{subLabel(a)}</p>
+              </div>
             </SelectItem>
           ))}
         </SelectContent>
