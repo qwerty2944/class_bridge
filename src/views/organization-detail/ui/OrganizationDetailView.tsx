@@ -26,12 +26,15 @@ import {
   fetchOrganization,
   fetchOrganizationMembers,
   removeOrgMember,
+  setOrganizationSubjects,
   updateOrgMemberTeacherRole,
   updateOrganization,
 } from '@/entities/organization';
+import { fetchSubjects } from '@/entities/subject';
 import { ORG_COLORS } from '@/views/organizations/ui/OrganizationsView';
+import { SubjectPicker } from '@/views/organizations/ui/SubjectPicker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover';
-import { Palette } from 'lucide-react';
+import { Palette, BookOpen } from 'lucide-react';
 import { fetchTenantMembers } from '@/entities/tenant';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { ClassHandoverDialog } from '@/features/teacher-handover';
@@ -81,15 +84,33 @@ export function OrganizationDetailClient({ orgId }: { orgId: string }) {
       </Button>
       <header className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="h-2 w-12 rounded" style={{ background: org.color ?? '#3b82f6' }} />
-            {org.subject && <Badge variant="secondary">{org.subject.name}</Badge>}
+            {org.subjects.map((s) => (
+              <Badge
+                key={s.id}
+                variant="secondary"
+                style={{ background: `${s.color ?? '#888'}20`, color: s.color ?? undefined }}
+              >
+                {s.name}
+              </Badge>
+            ))}
             {canManageOrg && (
-              <OrgColorPicker
-                orgId={orgId}
-                value={org.color ?? '#3b82f6'}
-                onSaved={() => qc.invalidateQueries({ queryKey: ['org', orgId] })}
-              />
+              <>
+                <OrgColorPicker
+                  orgId={orgId}
+                  value={org.color ?? '#3b82f6'}
+                  onSaved={() => qc.invalidateQueries({ queryKey: ['org', orgId] })}
+                />
+                <OrgSubjectsDialog
+                  orgId={orgId}
+                  currentSubjectIds={org.subjects.map((s) => s.id)}
+                  onSaved={() => {
+                    qc.invalidateQueries({ queryKey: ['org', orgId] });
+                    qc.invalidateQueries({ queryKey: ['orgs'] });
+                  }}
+                />
+              </>
             )}
           </div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight mt-1">{org.name}</h1>
@@ -424,5 +445,78 @@ function OrgColorPicker({
         <p className="mt-2 text-[11px] text-muted-foreground">캘린더 칩에 적용됩니다.</p>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** 반의 과목 set 관리 — 종합반은 여러 과목을 동시에 가질 수 있다. */
+function OrgSubjectsDialog({
+  orgId,
+  currentSubjectIds,
+  onSaved,
+}: {
+  orgId: string;
+  currentSubjectIds: string[];
+  onSaved: () => void;
+}) {
+  const { tenantId } = useCurrentTenant();
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<string[]>(currentSubjectIds);
+
+  // 다이얼로그 열 때마다 현재 값으로 초기화 (외부에서 바뀌었을 수 있음).
+  const subjectsQ = useQuery({
+    queryKey: ['subjects', tenantId],
+    enabled: !!tenantId && open,
+    queryFn: () => fetchSubjects(tenantId!),
+  });
+
+  const save = useMutation({
+    mutationFn: () => setOrganizationSubjects(orgId, picked),
+    onSuccess: () => {
+      onSaved();
+      toast.success('과목 갱신됨');
+      setOpen(false);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o) setPicked(currentSubjectIds);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label="과목 관리"
+          title="과목 관리"
+        >
+          <BookOpen className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>과목 관리</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            여러 과목을 동시에 선택할 수 있습니다 (종합반).
+          </p>
+          <SubjectPicker
+            subjects={subjectsQ.data ?? []}
+            value={picked}
+            onChange={setPicked}
+          />
+        </div>
+        <DialogFooter>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            저장
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

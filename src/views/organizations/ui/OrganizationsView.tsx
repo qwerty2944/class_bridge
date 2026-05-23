@@ -11,7 +11,6 @@ import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { Skeleton } from '@/shared/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -21,8 +20,13 @@ import {
   DialogTrigger,
 } from '@/shared/ui/dialog';
 import { useCurrentTenant } from '@/features/tenant-switch';
-import { createOrganization, fetchOrganizations, fetchOrganizationsForUser } from '@/entities/organization';
+import {
+  createOrganization,
+  fetchOrganizations,
+  fetchOrganizationsForUser,
+} from '@/entities/organization';
 import { fetchSubjects } from '@/entities/subject';
+import { SubjectPicker } from './SubjectPicker';
 
 // 반 색상 팔레트 — 기본(차분한) 색 + 형광(밝고 채도 높은) 색.
 // 추가/수정 다이얼로그 + 캘린더 칩이 모두 이 팔레트를 공유한다.
@@ -55,7 +59,7 @@ export function OrganizationsClient() {
       <header className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">반·조직</h1>
-          <p className="text-sm text-muted-foreground">학원 내 반(클래스)을 관리합니다.</p>
+          <p className="text-sm text-muted-foreground">학원 내 반(클래스)을 관리합니다. 종합반은 여러 과목을 동시에 가질 수 있어요.</p>
         </div>
         {has('director') && <NewOrgDialog />}
       </header>
@@ -78,18 +82,27 @@ export function OrganizationsClient() {
                 <div className="h-2" style={{ background: o.color ?? '#3b82f6' }} />
                 <CardContent className="pt-4">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3 className="font-semibold flex items-center gap-2">
-                        {o.name}
-                        {o.subject && (
-                          <span className="text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded" style={{ background: `${o.subject.color}20`, color: o.subject.color ?? undefined }}>
-                            {o.subject.name}
-                          </span>
-                        )}
-                      </h3>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold truncate">{o.name}</h3>
+                      {o.subjects.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {o.subjects.map((s) => (
+                            <span
+                              key={s.id}
+                              className="text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded"
+                              style={{
+                                background: `${s.color ?? '#888'}20`,
+                                color: s.color ?? undefined,
+                              }}
+                            >
+                              {s.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{o.description ?? '—'}</p>
                     </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition" />
+                    <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition shrink-0" />
                   </div>
                   <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
                     <Users className="h-3.5 w-3.5" /> 멤버 보러가기
@@ -110,7 +123,7 @@ function NewOrgDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [subjectId, setSubjectId] = useState<string | null>(null);
+  const [subjectIds, setSubjectIds] = useState<string[]>([]);
   const [color, setColor] = useState(ORG_COLORS[0]);
   const [busy, setBusy] = useState(false);
 
@@ -124,12 +137,20 @@ function NewOrgDialog() {
     if (!tenantId || !name.trim()) return;
     setBusy(true);
     try {
-      await createOrganization({ tenant_id: tenantId, name, description, subject_id: subjectId, color, created_by: userId });
+      await createOrganization({
+        tenant_id: tenantId,
+        name,
+        description,
+        subject_ids: subjectIds,
+        color,
+        created_by: userId,
+      });
       qc.invalidateQueries({ queryKey: ['orgs', tenantId] });
       toast.success('반 생성됨');
       setOpen(false);
       setName('');
       setDescription('');
+      setSubjectIds([]);
     } finally {
       setBusy(false);
     }
@@ -149,27 +170,20 @@ function NewOrgDialog() {
         <div className="space-y-3">
           <div>
             <Label>이름</Label>
-            <Input className="mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 고2 수학 심화반" />
+            <Input className="mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 고2 종합반" />
           </div>
           <div>
             <Label>설명</Label>
             <Textarea className="mt-1" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div>
-            <Label>과목</Label>
-            <Select value={subjectId ?? '__none'} onValueChange={(v) => setSubjectId(v === '__none' ? null : v)}>
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="선택" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">미지정</SelectItem>
-                {subjectsQ.data?.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>과목 (여러 개 선택 가능)</Label>
+            <SubjectPicker
+              className="mt-1"
+              subjects={subjectsQ.data ?? []}
+              value={subjectIds}
+              onChange={setSubjectIds}
+            />
           </div>
           <div>
             <Label>색상</Label>

@@ -59,9 +59,15 @@ export interface Organization {
   tenant_id: string;
   name: string;
   description: string | null;
-  subject_id: string | null;
   color: string | null;
   created_by: string | null;
+  created_at: string;
+}
+
+// 반 ↔ 과목 many-to-many junction (0021).
+export interface OrganizationSubject {
+  organization_id: string;
+  subject_id: string;
   created_at: string;
 }
 
@@ -294,6 +300,11 @@ export type Database = {
         Row: OrganizationMember;
         Insert: Partial<OrganizationMember> & Pick<OrganizationMember, 'organization_id' | 'user_id' | 'role'>;
         Update: Partial<OrganizationMember>;
+      };
+      organization_subjects: {
+        Row: OrganizationSubject;
+        Insert: Pick<OrganizationSubject, 'organization_id' | 'subject_id'>;
+        Update: Partial<OrganizationSubject>;
       };
       parent_student_links: {
         Row: ParentStudentLink;

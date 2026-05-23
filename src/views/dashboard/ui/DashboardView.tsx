@@ -173,7 +173,10 @@ export function DashboardClient() {
                     <div className="overflow-hidden">
                       <p className="font-medium truncate">{o.name}</p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {o.subject?.name ?? '미지정'} · {o.description ?? '—'}
+                        {o.subjects.length > 0
+                          ? o.subjects.map((s) => s.name).join(', ')
+                          : '과목 미지정'}{' '}
+                        · {o.description ?? '—'}
                       </p>
                     </div>
                   </div>

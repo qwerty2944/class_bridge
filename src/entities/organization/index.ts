@@ -5,5 +5,6 @@ export type {
   OrgRole,
   TeacherRole,
   OrgWithSubject,
+  OrgWithSubjects,
   OrgMemberWithProfile,
 } from './model/types';
