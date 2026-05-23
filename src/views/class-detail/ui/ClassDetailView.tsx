@@ -238,7 +238,7 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                   <p className="text-xs text-muted-foreground truncate">{a.student?.email}</p>
                 </Link>
                 {canEdit ? (
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap flex-1 justify-end min-w-0">
                     <Select
                       value={a.status}
                       onValueChange={(v) =>
@@ -260,16 +260,19 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Input
-                      placeholder="사유"
-                      defaultValue={a.note ?? ''}
-                      onBlur={(e) => {
-                        if ((e.target.value || '') !== (a.note ?? '')) {
-                          upd.mutate({ id: a.id, patch: { note: e.target.value } });
-                        }
-                      }}
-                      className="w-[160px]"
-                    />
+                    {/* 출석이면 사유는 의미 없음 — 결석/지각/사유결석 일 때만 노출. */}
+                    {a.status !== 'present' && (
+                      <Input
+                        placeholder="사유"
+                        defaultValue={a.note ?? ''}
+                        onBlur={(e) => {
+                          if ((e.target.value || '') !== (a.note ?? '')) {
+                            upd.mutate({ id: a.id, patch: { note: e.target.value } });
+                          }
+                        }}
+                        className="flex-1 min-w-[200px] max-w-[400px]"
+                      />
+                    )}
                   </div>
                 ) : (
                   <Badge variant={a.status === 'present' ? 'default' : 'secondary'}>
