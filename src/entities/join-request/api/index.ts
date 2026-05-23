@@ -114,3 +114,14 @@ export async function rejectJoinRequest(id: string, deciderId: string): Promise<
     .eq('id', id);
   if (error) throw error;
 }
+
+// 신청자가 본인의 pending 요청을 직접 취소(삭제). user_id 매칭으로 자기 행만 지움.
+export async function cancelJoinRequest(requestId: string, userId: string): Promise<void> {
+  const { error } = await sb()
+    .from('tenant_join_requests')
+    .delete()
+    .eq('id', requestId)
+    .eq('user_id', userId)
+    .eq('status', 'pending');
+  if (error) throw error;
+}

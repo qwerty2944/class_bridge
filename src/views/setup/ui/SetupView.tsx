@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { RealtimePostgresUpdatePayload } from '@supabase/supabase-js';
 import { Loader2, GraduationCap, Sparkles, UserPlus, Search, Clock, Ticket } from 'lucide-react';
@@ -21,6 +21,7 @@ import { createClient } from '@/shared/api/supabase/client';
 import { useTenantStore } from '@/shared/stores/tenant-store';
 import { searchTenants } from '@/entities/tenant';
 import {
+  cancelJoinRequest,
   createJoinRequest,
   fetchMyJoinRequests,
   type JoinRequestRole,
@@ -156,7 +157,7 @@ export function SetupClient({ userId }: { userId: string }) {
   );
 }
 
-/** 합류 탭 — 대기 중인 가입 요청이 있으면 그 상태를, 없으면 합류 폼을 보여준다. */
+/** 합류 탭 — 펜딩 요청 리스트(여러 개 가능) 위에 + 항상 합류 폼. */
 function JoinTab({ userId }: { userId: string }) {
   const qc = useQueryClient();
   const myReqQ = useQuery({
@@ -164,48 +165,61 @@ function JoinTab({ userId }: { userId: string }) {
     queryFn: () => fetchMyJoinRequests(userId),
   });
 
+  const refresh = () => qc.invalidateQueries({ queryKey: ['my-join-requests', userId] });
+  const pendings = (myReqQ.data ?? []).filter((r) => r.status === 'pending');
+
   if (myReqQ.isLoading) return <Skeleton className="h-48" />;
 
-  const pending = (myReqQ.data ?? []).find((r) => r.status === 'pending');
-  const refresh = () => qc.invalidateQueries({ queryKey: ['my-join-requests', userId] });
-
-  if (pending) return <PendingRequestPanel request={pending} onResolved={refresh} />;
-  return <JoinForms userId={userId} onRequested={refresh} />;
+  return (
+    <div className="space-y-4">
+      {pendings.length > 0 && (
+        <PendingRequestList requests={pendings} userId={userId} onChanged={refresh} />
+      )}
+      <JoinForms userId={userId} onRequested={refresh} />
+    </div>
+  );
 }
 
-/** 승인 대기 중 — 본인 요청의 상태 변화를 Realtime 으로 구독한다. */
-function PendingRequestPanel({
-  request,
-  onResolved,
+/** 펜딩 요청 카드 리스트 — 여러 학원에 동시에 신청 가능. 본인 요청 취소도 여기서. */
+function PendingRequestList({
+  requests,
+  userId,
+  onChanged,
 }: {
-  request: JoinRequestWithTenant;
-  onResolved: () => void;
+  requests: JoinRequestWithTenant[];
+  userId: string;
+  onChanged: () => void;
 }) {
   const router = useRouter();
   const setTenant = useTenantStore((s) => s.setTenant);
+  const qc = useQueryClient();
 
+  // user_id 단위로 한 채널만 — 어떤 요청 UPDATE 든 한 핸들러가 처리.
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
-      .channel(`join-request-${request.id}`)
+      .channel(`my-join-${userId}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'tenant_join_requests',
-          filter: `id=eq.${request.id}`,
+          filter: `user_id=eq.${userId}`,
         },
         (payload: RealtimePostgresUpdatePayload<TenantJoinRequest>) => {
           const next = payload.new;
+          // 어떤 요청이었는지 카드 목록에서 찾아 이름 표시.
+          const req = requests.find((r) => r.id === next.id);
+          const name = req?.tenant?.name ?? '학원';
           if (next.status === 'approved') {
-            toast.success(`${request.tenant?.name ?? '학원'} 가입이 승인되었습니다.`);
-            setTenant(request.tenant_id);
+            toast.success(`${name} 가입이 승인되었습니다.`);
+            setTenant(next.tenant_id);
             router.replace('/dashboard');
             router.refresh();
           } else if (next.status === 'rejected') {
-            toast.error('가입 요청이 거절되었습니다.');
-            onResolved();
+            toast.error(`${name} 가입 요청이 거절되었습니다.`);
+            onChanged();
           }
         },
       )
@@ -213,22 +227,50 @@ function PendingRequestPanel({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [request.id, request.tenant_id, request.tenant?.name, router, setTenant, onResolved]);
+  }, [userId, requests, router, setTenant, onChanged]);
+
+  const cancel = useMutation({
+    mutationFn: (id: string) => cancelJoinRequest(id, userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-join-requests', userId] });
+      toast.success('가입 요청을 취소했습니다.');
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   return (
-    <div className="space-y-4 text-center">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-        <Clock className="h-6 w-6" />
-      </div>
-      <div>
-        <p className="font-medium">{request.tenant?.name ?? '학원'} 가입 요청을 보냈습니다.</p>
-        <p className="text-sm text-muted-foreground mt-1">
-          학원장이 승인하면 자동으로 입장합니다. ({ROLE_LABEL[request.requested_role]}로 요청)
-        </p>
-      </div>
-      <Button variant="outline" className="w-full" onClick={onResolved}>
-        새로고침
-      </Button>
+    <div className="space-y-2">
+      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        대기 중인 가입 요청 ({requests.length})
+      </p>
+      {requests.map((r) => (
+        <div key={r.id} className="rounded-lg border bg-card p-3 flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+            <Clock className="h-4 w-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{r.tenant?.name ?? '학원'}</p>
+            <p className="text-xs text-muted-foreground">
+              {ROLE_LABEL[r.requested_role]}로 요청 · 학원장 승인 대기 중
+            </p>
+            {r.message && (
+              <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                메모: {r.message}
+              </p>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (confirm('이 요청을 취소할까요?')) cancel.mutate(r.id);
+            }}
+            disabled={cancel.isPending}
+          >
+            취소
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }

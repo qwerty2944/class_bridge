@@ -62,7 +62,7 @@ export async function generateMetadata({
   const title = `${s.topic ?? '수업'}${s.organization?.name ? ` — ${s.organization.name}` : ''}`;
   const description =
     [
-      new Date(s.session_date).toLocaleDateString('ko-KR'),
+      new Date(s.session_date).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }),
       s.teacher?.full_name ? `${s.teacher.full_name} 선생님` : null,
       s.subject?.name ?? null,
     ]
@@ -115,7 +115,7 @@ export default async function SharedClassPage({
           <div className="mt-4 flex flex-wrap items-center gap-1.5 text-sm">
             <Chip>
               <CalendarDays className="h-3.5 w-3.5" />
-              {new Date(s.session_date).toLocaleDateString('ko-KR')}
+              {new Date(s.session_date).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })}
             </Chip>
             {s.start_time && (
               <Chip>
@@ -158,7 +158,7 @@ export default async function SharedClassPage({
                       )}
                       {a.due_at && (
                         <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">
-                          마감 {new Date(a.due_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          마감 {new Date(a.due_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })}
                         </span>
                       )}
                     </div>
@@ -192,7 +192,7 @@ export default async function SharedClassPage({
                       <p className="text-sm font-semibold flex-1 min-w-0">{a.title}</p>
                       {a.due_at && (
                         <span className="text-[11px] text-muted-foreground">
-                          마감 {new Date(a.due_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric' })}
+                          마감 {new Date(a.due_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', timeZone: 'Asia/Seoul' })}
                         </span>
                       )}
                     </div>
