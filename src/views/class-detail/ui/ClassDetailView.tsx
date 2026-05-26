@@ -645,7 +645,7 @@ function PastReviews({
       )}
 
       {reviewIds.map((aid) => (
-        <div key={aid} className="rounded-lg border bg-card p-3">
+        <div key={aid} className="rounded-lg border bg-card overflow-hidden">
           <HomeworkReviewPicker
             orgId={orgId}
             tenantId={tenantId}
@@ -658,7 +658,7 @@ function PastReviews({
       ))}
 
       {drafts.map((d) => (
-        <div key={d.key} className="rounded-lg border border-dashed bg-muted/20 p-3">
+        <div key={d.key} className="rounded-lg border border-dashed bg-muted/20">
           <HomeworkReviewPicker
             orgId={orgId}
             tenantId={tenantId}

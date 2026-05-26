@@ -164,7 +164,7 @@ export function HomeworkReviewPicker({
   }
 
   return (
-    <div className="space-y-3">
+    <div className={hideSelect ? '' : 'p-3 space-y-3'}>
       {!hideSelect && (
         <div className="flex items-center gap-2">
           <Select
@@ -205,53 +205,57 @@ export function HomeworkReviewPicker({
       )}
 
       {hwQ.data && (
-        <div className="rounded-md border bg-muted/30 p-3 text-sm">
-          <div className="flex items-start gap-2 flex-wrap">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Link
-                  href={`/assignments/${hwQ.data.id}`}
-                  className="font-medium text-sm hover:underline"
-                >
-                  {hwQ.data.title}
-                </Link>
-                {hwQ.data.xp_reward > 0 && (
-                  <Badge variant="secondary">완료 +{hwQ.data.xp_reward} XP</Badge>
-                )}
-                {hwQ.data.due_at && (
-                  <span className="text-xs text-muted-foreground">
-                    마감 {new Date(hwQ.data.due_at).toLocaleString('ko-KR')}
-                  </span>
-                )}
-              </div>
-              {hwQ.data.description_md && (
-                <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                  {hwQ.data.description_md}
-                </p>
+        <div
+          className={
+            hideSelect
+              ? 'flex items-start gap-2 p-3 border-b bg-muted/30'
+              : 'flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-sm'
+          }
+        >
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Link
+                href={`/assignments/${hwQ.data.id}`}
+                className="font-medium text-sm hover:underline"
+              >
+                {hwQ.data.title}
+              </Link>
+              {hwQ.data.xp_reward > 0 && (
+                <Badge variant="secondary">완료 +{hwQ.data.xp_reward} XP</Badge>
+              )}
+              {hwQ.data.due_at && (
+                <span className="text-xs text-muted-foreground">
+                  마감 {new Date(hwQ.data.due_at).toLocaleString('ko-KR')}
+                </span>
               )}
             </div>
-            <Link
-              href={`/assignments/${hwQ.data.id}`}
-              className="shrink-0 rounded-md border bg-background px-2 py-1 text-xs hover:bg-accent transition"
-            >
-              과제 상세 →
-            </Link>
-            {hideSelect && onRemove && (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={onRemove}
-                aria-label={removeLabel}
-                title={removeLabel}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+            {hwQ.data.description_md && (
+              <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                {hwQ.data.description_md}
+              </p>
             )}
           </div>
+          <Link
+            href={`/assignments/${hwQ.data.id}`}
+            className="shrink-0 rounded-md border bg-background px-2 py-1 text-xs hover:bg-accent transition"
+          >
+            과제 상세 →
+          </Link>
+          {hideSelect && onRemove && (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onRemove}
+              aria-label={removeLabel}
+              title={removeLabel}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       )}
 
-      <div className="divide-y">
+      <div className={hideSelect ? 'divide-y px-3' : 'divide-y'}>
         {hwQ.isLoading ? (
           <Skeleton className="h-24" />
         ) : !hwQ.data || hwQ.data.submissions.length === 0 ? (
