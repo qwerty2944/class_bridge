@@ -55,6 +55,7 @@ import {
   type SubmissionQuality,
 } from '@/shared/types/database';
 import { QualitySegmented } from '@/views/assignment-detail/ui/AssignmentDetailView';
+import { formatHHMM } from '@/shared/lib/datetime';
 
 const STATUSES: AttendanceStatus[] = ['present', 'late', 'absent', 'excused'];
 
@@ -192,8 +193,8 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
               </div>
               <CardDescription className="mt-1">
                 {new Date(s.session_date).toLocaleDateString('ko-KR')}{' '}
-                {s.start_time && `${s.start_time.slice(0, 5)}`}
-                {s.end_time && ` ~ ${s.end_time.slice(0, 5)}`}
+                {s.start_time && `${formatHHMM(s.start_time)}`}
+                {s.end_time && ` ~ ${formatHHMM(s.end_time)}`}
                 {s.teacher && ` · ${s.teacher.full_name} 선생님`}
               </CardDescription>
             </div>
@@ -651,6 +652,7 @@ function PastReviews({
             currentSessionId={sessionId}
             value={aid}
             onRemove={() => remove.mutate(aid)}
+            hideSelect
           />
         </div>
       ))}

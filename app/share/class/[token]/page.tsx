@@ -12,6 +12,13 @@ import {
 import { createClient } from '@/shared/api/supabase/server';
 import { RichContent } from '@/features/rich-text-editor';
 import { cn } from '@/shared/lib/utils';
+import { formatHHMM } from '@/shared/lib/datetime';
+
+// share/<token> 은 항상 최신 DB 상태를 보여야 한다 — 학원장이 내용 갱신 후 즉시 반영.
+// PPR/CDN/fetch 캐시 모두 우회.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 import type {
   Assignment,
   AssignmentSubmission,
@@ -120,8 +127,8 @@ export default async function SharedClassPage({
             {s.start_time && (
               <Chip>
                 <Clock className="h-3.5 w-3.5" />
-                {s.start_time.slice(0, 5)}
-                {s.end_time ? ` ~ ${s.end_time.slice(0, 5)}` : ''}
+                {formatHHMM(s.start_time)}
+                {s.end_time ? ` ~ ${formatHHMM(s.end_time)}` : ''}
               </Chip>
             )}
             {s.subject && <Chip>{s.subject.name}</Chip>}

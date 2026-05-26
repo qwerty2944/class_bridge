@@ -39,6 +39,7 @@ export function HomeworkReviewPicker({
   onRemove,
   removeLabel = '점검 해제',
   emptyHint = '점검할 과제가 없습니다.',
+  hideSelect = false,
 }: {
   orgId: string;
   tenantId: string;
@@ -49,6 +50,8 @@ export function HomeworkReviewPicker({
   onRemove?: () => void;
   removeLabel?: string;
   emptyHint?: string;
+  /** Select 드롭다운을 숨김 — 이미 확정된 항목 표시용. X 는 카드 위로 이동. */
+  hideSelect?: boolean;
 }) {
   const qc = useQueryClient();
 
@@ -162,42 +165,44 @@ export function HomeworkReviewPicker({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Select
-          value={selectedAssignmentId}
-          onValueChange={(v) => v && onChange?.(v)}
-        >
-          <SelectTrigger className="w-full flex-1">
-            <SelectValue>
-              {(val) => {
-                const a = eligible.find((o) => o.id === String(val ?? ''));
-                return a ? triggerLabel(a) : '과제 선택';
-              }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent className="max-h-[300px]">
-            {eligible.map((a) => (
-              <SelectItem key={a.id} value={a.id}>
-                <div className="min-w-0">
-                  <p className="truncate text-sm">{a.title}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">{subLabel(a)}</p>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {onRemove && (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={onRemove}
-            aria-label={removeLabel}
-            title={removeLabel}
+      {!hideSelect && (
+        <div className="flex items-center gap-2">
+          <Select
+            value={selectedAssignmentId}
+            onValueChange={(v) => v && onChange?.(v)}
           >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
+            <SelectTrigger className="w-full flex-1">
+              <SelectValue>
+                {(val) => {
+                  const a = eligible.find((o) => o.id === String(val ?? ''));
+                  return a ? triggerLabel(a) : '과제 선택';
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className="max-h-[300px]">
+              {eligible.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm">{a.title}</p>
+                    <p className="truncate text-[11px] text-muted-foreground">{subLabel(a)}</p>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {onRemove && (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onRemove}
+              aria-label={removeLabel}
+              title={removeLabel}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      )}
 
       {hwQ.data && (
         <div className="rounded-md border bg-muted/30 p-3 text-sm">
@@ -219,6 +224,17 @@ export function HomeworkReviewPicker({
             >
               과제 상세 →
             </Link>
+            {hideSelect && onRemove && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={onRemove}
+                aria-label={removeLabel}
+                title={removeLabel}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
           {hwQ.data.description_md && (
             <p className="mt-1.5 whitespace-pre-wrap text-xs text-muted-foreground">

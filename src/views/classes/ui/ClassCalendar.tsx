@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
+import { formatHHMM } from '@/shared/lib/datetime';
 import type { SessionWithOrg } from '@/entities/class-session';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -160,7 +161,7 @@ export function ClassCalendar({
                   style={{ background: s.organization?.color ?? '#6366f1' }}
                   title={`${s.organization?.name ?? ''} · ${s.topic ?? '수업'}`}
                 >
-                  {s.start_time ? `${s.start_time.slice(0, 5)} ` : ''}
+                  {s.start_time ? `${formatHHMM(s.start_time)} ` : ''}
                   {s.topic ?? '수업'}
                 </Link>
               ))}

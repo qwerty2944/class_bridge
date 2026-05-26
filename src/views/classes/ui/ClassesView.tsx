@@ -31,6 +31,7 @@ import { fetchSubjects } from '@/entities/subject';
 import { RichTextEditor } from '@/features/rich-text-editor';
 import { HomeworkReviewPicker } from '@/features/homework-review';
 import { cn } from '@/shared/lib/utils';
+import { formatHHMM } from '@/shared/lib/datetime';
 import { ClassCalendar } from './ClassCalendar';
 
 export function ClassesClient({ initialOrgId }: { initialOrgId: string | null }) {
@@ -179,8 +180,8 @@ export function ClassesClient({ initialOrgId }: { initialOrgId: string | null })
                       </div>
                       <p className="mt-1.5 text-xs text-muted-foreground">
                         {new Date(s.session_date).toLocaleDateString('ko-KR')}{' '}
-                        {s.start_time && `${s.start_time.slice(0, 5)}`}
-                        {s.end_time && ` ~ ${s.end_time.slice(0, 5)}`}
+                        {s.start_time && `${formatHHMM(s.start_time)}`}
+                        {s.end_time && ` ~ ${formatHHMM(s.end_time)}`}
                         {s.teacher && ` · ${s.teacher.full_name}`}
                       </p>
                     </div>
