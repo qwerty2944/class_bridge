@@ -6,7 +6,20 @@ import type {
   PostCategory,
   HandoverScope,
   TeacherRole,
+  TenantType,
 } from '@/shared/types/database';
+
+export const TENANT_TYPE_LABEL: Record<TenantType, string> = {
+  academy: '학원',
+  tutor: '과외',
+  study: '스터디',
+};
+
+export const TENANT_TYPE_DESCRIPTION: Record<TenantType, string> = {
+  academy: '여러 선생님·반·학생을 함께 운영',
+  tutor: '1:1 또는 1:소수, 학원장=선생님',
+  study: '스터디 모임 / 자율학습 그룹',
+};
 
 export const ROLE_LABEL: Record<Role, string> = {
   director: '학원장',

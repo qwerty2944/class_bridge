@@ -42,7 +42,7 @@ import { FloatingUnityHost } from '@/shared/unity/floating-host';
 import { useUnityStore } from '@/shared/stores/unity-store';
 import type { SessionContext } from '@/shared/auth/server';
 import type { Role } from '@/shared/types/database';
-import { ROLE_LABEL } from '@/shared/types/database';
+import { ROLE_LABEL, TENANT_TYPE_LABEL } from '@/shared/types/database';
 import { cn } from '@/shared/lib/utils';
 
 interface NavItem {
@@ -171,7 +171,7 @@ export function AppShell({ ctx, children }: { ctx: SessionContext; children: Rea
               <TooltipContent side="right">
                 <p className="font-medium">{m.tenant.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {m.tenant.type === 'tutor' ? '과외' : '학원'} ·{' '}
+                  {TENANT_TYPE_LABEL[m.tenant.type]} ·{' '}
                   {ROLE_LABEL[m.role]}
                 </p>
               </TooltipContent>
@@ -207,7 +207,7 @@ export function AppShell({ ctx, children }: { ctx: SessionContext; children: Rea
             <span className="flex-1 text-left overflow-hidden">
               <span className="block truncate text-sm font-semibold">{activeTenant.tenant.name}</span>
               <span className="block truncate text-xs text-muted-foreground">
-                {activeTenant.tenant.type === 'tutor' ? '과외' : '학원'} ·{' '}
+                {TENANT_TYPE_LABEL[activeTenant.tenant.type]} ·{' '}
                 {ROLE_LABEL[activeTenant.role]}
               </span>
             </span>

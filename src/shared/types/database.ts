@@ -7,7 +7,7 @@ export type Role = 'director' | 'teacher' | 'student' | 'parent';
 export type OrgRole = 'teacher' | 'student';
 export type TeacherRole = 'homeroom' | 'assistant';
 export type MemberStatus = 'active' | 'invited' | 'left';
-export type TenantType = 'academy' | 'tutor';
+export type TenantType = 'academy' | 'tutor' | 'study';
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 export type SubmissionStatus = 'pending' | 'submitted' | 'graded';
 export type SubmissionQuality = 'none' | 'partial' | 'done' | 'excellent';
@@ -396,4 +396,6 @@ export {
   SUBMISSION_LABEL,
   SUBMISSION_QUALITY_LABEL,
   CATEGORY_LABEL,
+  TENANT_TYPE_LABEL,
+  TENANT_TYPE_DESCRIPTION,
 } from '@/shared/config/labels';

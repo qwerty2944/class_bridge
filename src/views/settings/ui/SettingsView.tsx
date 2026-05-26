@@ -12,7 +12,7 @@ import { Label } from '@/shared/ui/label';
 import { Badge } from '@/shared/ui/badge';
 import { useCurrentTenant } from '@/features/tenant-switch';
 import { createClient } from '@/shared/api/supabase/client';
-import { ROLE_LABEL } from '@/shared/types/database';
+import { ROLE_LABEL, TENANT_TYPE_LABEL } from '@/shared/types/database';
 
 export function SettingsClient() {
   const { tenantId, tenant, roles, profile } = useCurrentTenant();
@@ -153,7 +153,7 @@ export function SettingsClient() {
             </div>
             <div>
               <Label>유형</Label>
-              <p className="mt-1 text-sm">{tenant?.type === 'tutor' ? '과외(1인)' : '학원'}</p>
+              <p className="mt-1 text-sm">{tenant ? TENANT_TYPE_LABEL[tenant.type] : '—'}</p>
             </div>
             <div>
               <Label>내 역할</Label>

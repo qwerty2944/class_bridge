@@ -28,7 +28,7 @@ import {
   type JoinRequestWithTenant,
   type TenantJoinRequest,
 } from '@/entities/join-request';
-import { ROLE_LABEL } from '@/shared/config/labels';
+import { ROLE_LABEL, TENANT_TYPE_LABEL, TENANT_TYPE_DESCRIPTION } from '@/shared/config/labels';
 import type { Role, Tenant, TenantType } from '@/shared/types/database';
 
 function slugify(input: string) {
@@ -117,34 +117,28 @@ export function SetupClient({ userId }: { userId: string }) {
               <RadioGroup
                 value={type}
                 onValueChange={(v) => setType(v as TenantType)}
-                className="grid grid-cols-2 gap-2"
+                className="grid grid-cols-3 gap-2"
               >
-                <label
-                  htmlFor="t-academy"
-                  className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer data-[checked=true]:border-foreground"
-                  data-checked={type === 'academy'}
-                >
-                  <RadioGroupItem id="t-academy" value="academy" />
-                  <div>
-                    <p className="text-sm font-medium">학원</p>
-                    <p className="text-xs text-muted-foreground">여러 선생님·반</p>
-                  </div>
-                </label>
-                <label
-                  htmlFor="t-tutor"
-                  className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer data-[checked=true]:border-foreground"
-                  data-checked={type === 'tutor'}
-                >
-                  <RadioGroupItem id="t-tutor" value="tutor" />
-                  <div>
-                    <p className="text-sm font-medium">과외(1인)</p>
-                    <p className="text-xs text-muted-foreground">학원장=선생님</p>
-                  </div>
-                </label>
+                {(['academy', 'tutor', 'study'] as const).map((t) => (
+                  <label
+                    key={t}
+                    htmlFor={`t-${t}`}
+                    className="flex flex-col items-start gap-1.5 rounded-lg border p-3 cursor-pointer data-[checked=true]:border-foreground"
+                    data-checked={type === t}
+                  >
+                    <RadioGroupItem id={`t-${t}`} value={t} />
+                    <div>
+                      <p className="text-sm font-medium">{TENANT_TYPE_LABEL[t]}</p>
+                      <p className="text-xs text-muted-foreground leading-tight">
+                        {TENANT_TYPE_DESCRIPTION[t]}
+                      </p>
+                    </div>
+                  </label>
+                ))}
               </RadioGroup>
             </div>
             <Button className="w-full" onClick={handleCreate} disabled={creating}>
-              {creating && <Loader2 className="h-4 w-4 animate-spin" />} 학원 만들기
+              {creating && <Loader2 className="h-4 w-4 animate-spin" />} {TENANT_TYPE_LABEL[type]} 만들기
             </Button>
           </TabsContent>
 
@@ -404,7 +398,7 @@ function JoinForms({ userId, onRequested }: { userId: string; onRequested: () =>
             >
               <span className="text-sm font-medium truncate">{t.name}</span>
               <Badge variant="secondary" className="shrink-0">
-                {t.type === 'tutor' ? '과외' : '학원'}
+                {TENANT_TYPE_LABEL[t.type]}
               </Badge>
             </button>
           ))}
