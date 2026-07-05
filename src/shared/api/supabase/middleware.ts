@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 
 const URL_FALLBACK = 'https://placeholder.supabase.co';
 const KEY_FALLBACK = 'placeholder-anon-key';
-const PUBLIC_PATHS = ['/login', '/signup', '/auth/callback', '/share', '/embed', '/'];
+const PUBLIC_PATHS = ['/login', '/signup', '/auth/callback', '/share', '/embed', '/unity', '/'];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
