@@ -17,6 +17,7 @@ import { fetchProgress } from '@/entities/progress';
 import { fetchAttendancesByStudent } from '@/entities/class-session';
 import { CharacterView } from '@/views/character';
 import { HandoverHistory, StudentHandoverDialog } from '@/features/teacher-handover';
+import { AwardPointsDialog } from '@/features/teacher-award';
 import { ATTENDANCE_LABEL, SUBMISSION_LABEL } from '@/shared/config/labels';
 import type { AssignmentSubmission, SubmissionStatus } from '@/shared/types/database';
 
@@ -81,6 +82,9 @@ export function StudentDetailView({ studentId }: { studentId: string }) {
             )}
           </div>
         </div>
+        {canHandover && !isSelf && (
+          <AwardPointsDialog studentUserId={studentId} studentFullName={profile.full_name} />
+        )}
       </header>
 
       <Tabs defaultValue="character">

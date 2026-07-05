@@ -180,3 +180,65 @@ export async function awardForQuiz(args: {
     leveledUp,
   };
 }
+
+// 선생/원장이 학생에게 수동으로 코인/XP를 지급한다. source='admin'.
+// source_ref 를 매번 새 uuid 로 발급해 같은 학생에게 여러 번 지급할 수 있다.
+export async function awardFromTeacher(args: {
+  tenantId: string;
+  studentUserId: string;
+  studentFullName?: string | null;
+  xpAmount: number;
+  coinAmount: number;
+  note?: string | null;
+}): Promise<RewardResult> {
+  const character = await ensureCharacter({
+    tenantId: args.tenantId,
+    userId: args.studentUserId,
+    fullName: args.studentFullName,
+  });
+
+  const dXp = Math.max(0, Math.round(args.xpAmount));
+  const dCoin = Math.max(0, Math.round(args.coinAmount));
+  if (dXp === 0 && dCoin === 0) {
+    return { xpAdded: 0, coinsAdded: 0, oldLevel: character.level, newLevel: character.level, leveledUp: false };
+  }
+
+  await sb().from('reward_events').insert({
+    character_id: character.id,
+    source: 'admin',
+    source_ref: crypto.randomUUID(),
+    xp_delta: dXp,
+    coin_delta: dCoin,
+    note: args.note || '선생님 지급',
+  });
+
+  const newXp = character.xp + dXp;
+  let newCoins = character.coins + dCoin;
+  const oldLevel = character.level;
+  const newLevel = levelForXp(newXp);
+  const leveledUp = newLevel > oldLevel;
+  if (leveledUp) {
+    const bonus = 50 * (newLevel - oldLevel);
+    newCoins += bonus;
+    await sb().from('reward_events').insert({
+      character_id: character.id,
+      source: 'level_bonus',
+      xp_delta: 0,
+      coin_delta: bonus,
+      note: `Lv.${oldLevel} → Lv.${newLevel}`,
+    });
+  }
+
+  await sb()
+    .from('student_characters')
+    .update({ xp: newXp, coins: newCoins, level: newLevel, updated_at: new Date().toISOString() })
+    .eq('id', character.id);
+
+  return {
+    xpAdded: dXp,
+    coinsAdded: dCoin + (leveledUp ? 50 * (newLevel - oldLevel) : 0),
+    oldLevel,
+    newLevel,
+    leveledUp,
+  };
+}

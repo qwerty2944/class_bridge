@@ -200,7 +200,9 @@ function UnityAnchor({ children }: { children: React.ReactNode }) {
   }, [request, setRect]);
 
   return (
-    <div ref={ref} className="aspect-square w-full max-w-[520px] mx-auto">
+    // Unity 카메라는 세로 화각 고정이라 정사각형 캔버스에서는 옆으로 뻗은 무기가 잘린다.
+    // 가로 비율(8:5)을 확보해 무기까지 항상 화면에 들어오게 한다.
+    <div ref={ref} className="aspect-[8/5] w-full max-w-[640px] mx-auto">
       {children}
     </div>
   );
