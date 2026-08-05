@@ -2,9 +2,10 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowLeft, CalendarDays, ClipboardList, Pencil, Plus, Share2, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ClipboardList, Pencil, Plus, Share2, Trash2, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
@@ -24,10 +25,12 @@ import {
   DialogTrigger,
 } from '@/shared/ui/dialog';
 import {
+  deleteClassSession,
   ensureClassShareToken,
   fetchAttendances,
   fetchClassSession,
   fetchClassSessions,
+  getNextSessionNo,
   updateAttendance,
   updateClassSession,
   type SessionWithRefs,
@@ -189,6 +192,7 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
               <div className="flex items-center gap-2">
                 <CalendarDays className="h-5 w-5 text-muted-foreground" />
                 <CardTitle>{s.topic ?? '제목 없음'}</CardTitle>
+                {s.session_no != null && <Badge variant="outline">{s.session_no}회차</Badge>}
                 {s.subject && <Badge variant="secondary">{s.subject.name}</Badge>}
               </div>
               <CardDescription className="mt-1">
@@ -202,6 +206,7 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
               <div className="flex gap-2 shrink-0">
                 <ShareSessionButton session={s} />
                 <EditSessionDialog session={s} />
+                <DeleteSessionButton session={s} />
               </div>
             )}
           </div>
@@ -741,6 +746,40 @@ function ShareSessionButton({ session }: { session: SessionWithRefs }) {
   );
 }
 
+function DeleteSessionButton({ session }: { session: SessionWithRefs }) {
+  const router = useRouter();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
+  const remove = async () => {
+    if (!confirm('이 수업을 삭제할까요? 출결과 이 수업에서 만든 과제(제출 기록 포함)도 함께 삭제됩니다.'))
+      return;
+    setBusy(true);
+    try {
+      await deleteClassSession(session.id);
+      qc.removeQueries({ queryKey: ['session', session.id] });
+      qc.invalidateQueries({ queryKey: ['class-sessions'] });
+      toast.success('수업이 삭제되었습니다.');
+      router.replace('/classes');
+    } catch (e) {
+      toast.error((e as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="gap-1 shrink-0 text-destructive hover:text-destructive"
+      onClick={remove}
+      disabled={busy}
+    >
+      <Trash2 className="h-3.5 w-3.5" /> 삭제
+    </Button>
+  );
+}
+
 function EditSessionDialog({ session }: { session: SessionWithRefs }) {
   const [open, setOpen] = useState(false);
   return (
@@ -773,6 +812,7 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
     topic: session.topic ?? '',
     subject_id: session.subject_id,
     content_md: session.content_md ?? '',
+    session_no: session.session_no != null ? String(session.session_no) : '',
   });
   const [busy, setBusy] = useState(false);
 
@@ -787,6 +827,7 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
         topic: form.topic || null,
         subject_id: form.subject_id,
         content_md: form.content_md || null,
+        session_no: form.session_no.trim() ? Math.max(1, Math.round(Number(form.session_no))) : null,
       });
       qc.invalidateQueries({ queryKey: ['session', session.id] });
       qc.invalidateQueries({ queryKey: ['class-sessions', session.organization_id] });
@@ -805,13 +846,38 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
         <DialogTitle>수업 수정</DialogTitle>
       </DialogHeader>
       <div className="space-y-3">
-        <div>
-          <Label>날짜</Label>
-          <Input
-            type="date"
-            value={form.session_date}
-            onChange={(e) => setForm({ ...form, session_date: e.target.value })}
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>날짜</Label>
+            <Input
+              type="date"
+              value={form.session_date}
+              onChange={(e) => setForm({ ...form, session_date: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>회차</Label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={1}
+                value={form.session_no}
+                onChange={(e) => setForm({ ...form, session_no: e.target.value })}
+                placeholder="예: 3"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="shrink-0"
+                onClick={async () => {
+                  const n = await getNextSessionNo(session.organization_id);
+                  setForm((f) => ({ ...f, session_no: String(n) }));
+                }}
+              >
+                자동
+              </Button>
+            </div>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
