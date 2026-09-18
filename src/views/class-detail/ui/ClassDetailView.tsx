@@ -30,7 +30,6 @@ import {
   fetchAttendances,
   fetchClassSession,
   fetchClassSessions,
-  getNextSessionNo,
   updateAttendance,
   updateClassSession,
   type SessionWithRefs,
@@ -192,7 +191,6 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
               <div className="flex items-center gap-2">
                 <CalendarDays className="h-5 w-5 text-muted-foreground" />
                 <CardTitle>{s.topic ?? '제목 없음'}</CardTitle>
-                {s.session_no != null && <Badge variant="outline">{s.session_no}회차</Badge>}
                 {s.subject && <Badge variant="secondary">{s.subject.name}</Badge>}
               </div>
               <CardDescription className="mt-1">
@@ -812,7 +810,6 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
     topic: session.topic ?? '',
     subject_id: session.subject_id,
     content_md: session.content_md ?? '',
-    session_no: session.session_no != null ? String(session.session_no) : '',
   });
   const [busy, setBusy] = useState(false);
 
@@ -827,7 +824,6 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
         topic: form.topic || null,
         subject_id: form.subject_id,
         content_md: form.content_md || null,
-        session_no: form.session_no.trim() ? Math.max(1, Math.round(Number(form.session_no))) : null,
       });
       qc.invalidateQueries({ queryKey: ['session', session.id] });
       qc.invalidateQueries({ queryKey: ['class-sessions', session.organization_id] });
@@ -846,38 +842,13 @@ function EditSessionForm({ session, onDone }: { session: SessionWithRefs; onDone
         <DialogTitle>수업 수정</DialogTitle>
       </DialogHeader>
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>날짜</Label>
-            <Input
-              type="date"
-              value={form.session_date}
-              onChange={(e) => setForm({ ...form, session_date: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label>회차</Label>
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                min={1}
-                value={form.session_no}
-                onChange={(e) => setForm({ ...form, session_no: e.target.value })}
-                placeholder="예: 3"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                className="shrink-0"
-                onClick={async () => {
-                  const n = await getNextSessionNo(session.organization_id);
-                  setForm((f) => ({ ...f, session_no: String(n) }));
-                }}
-              >
-                자동
-              </Button>
-            </div>
-          </div>
+        <div>
+          <Label>날짜</Label>
+          <Input
+            type="date"
+            value={form.session_date}
+            onChange={(e) => setForm({ ...form, session_date: e.target.value })}
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
