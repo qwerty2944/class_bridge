@@ -47,6 +47,7 @@ import {
   type SessionAssignment,
 } from '@/entities/assignment';
 import { HomeworkReviewPicker } from '@/features/homework-review';
+import { fetchOrganizationMembers, updateOrgMemberSessionCycle } from '@/entities/organization';
 import { fetchSubjects } from '@/entities/subject';
 import { RichContent, RichTextEditor } from '@/features/rich-text-editor';
 import { useCurrentTenant } from '@/features/tenant-switch';
@@ -84,10 +85,31 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
     queryFn: () => fetchSessionReviewIds(sessionId),
   });
 
+  // 학생별 회차 주기(session_cycle) — 반 멤버 행에 저장.
+  const orgId = sQ.data?.organization_id;
+  const membersQ = useQuery({
+    queryKey: ['org-members', orgId],
+    enabled: !!orgId,
+    queryFn: () => fetchOrganizationMembers(orgId!),
+  });
+  const memberOf = new Map((membersQ.data ?? []).map((m) => [m.user_id, m]));
+  const updCycle = useMutation({
+    mutationFn: ({ id, cycle }: { id: string; cycle: number }) => updateOrgMemberSessionCycle(id, cycle),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['org-members', orgId] });
+      toast.success('회차 주기 변경됨 — 다음 수업부터 적용');
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   const upd = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateAttendance>[1] }) =>
       updateAttendance(id, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['attendances', sessionId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['attendances', sessionId] });
+      qc.invalidateQueries({ queryKey: ['class-sessions-multi'] });
+    },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   // 4-state 등급만 갱신 — 확정 여부와 무관. 이미 확정된 행이면 XP delta 자동 적용.
@@ -243,6 +265,41 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                 </Link>
                 {canEdit ? (
                   <div className="flex items-center gap-2 flex-wrap flex-1 justify-end min-w-0">
+                    {/* 회차 — 이 학생의 몇 번째 수업인지. 주기를 넘기면 다음 수업은 1 로 리셋. */}
+                    <div className="flex items-center gap-1 text-sm">
+                      <Input
+                        key={`no-${a.id}-${a.session_no ?? ''}`}
+                        type="number"
+                        min={1}
+                        aria-label="회차"
+                        defaultValue={a.session_no ?? ''}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          const next = v ? Math.max(1, Math.round(Number(v))) : null;
+                          if (next !== a.session_no) {
+                            upd.mutate({ id: a.id, patch: { session_no: next } });
+                          }
+                        }}
+                        className="w-14 text-center"
+                      />
+                      <span className="text-muted-foreground">회차 /</span>
+                      <Input
+                        key={`cycle-${a.student_id}-${memberOf.get(a.student_id)?.session_cycle ?? ''}`}
+                        type="number"
+                        min={1}
+                        max={99}
+                        aria-label="회차 주기"
+                        title="회차 주기 — 이 숫자 다음은 1 로 리셋"
+                        disabled={!memberOf.get(a.student_id)}
+                        defaultValue={memberOf.get(a.student_id)?.session_cycle ?? 8}
+                        onBlur={(e) => {
+                          const m = memberOf.get(a.student_id);
+                          const cycle = Math.min(99, Math.max(1, Math.round(Number(e.target.value) || 8)));
+                          if (m && cycle !== m.session_cycle) updCycle.mutate({ id: m.id, cycle });
+                        }}
+                        className="w-14 text-center"
+                      />
+                    </div>
                     <Select
                       value={a.status}
                       onValueChange={(v) =>
@@ -279,9 +336,12 @@ export function ClassDetailClient({ sessionId }: { sessionId: string }) {
                     )}
                   </div>
                 ) : (
-                  <Badge variant={a.status === 'present' ? 'default' : 'secondary'}>
-                    {ATTENDANCE_LABEL[a.status]}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {a.session_no != null && <Badge variant="outline">{a.session_no}회차</Badge>}
+                    <Badge variant={a.status === 'present' ? 'default' : 'secondary'}>
+                      {ATTENDANCE_LABEL[a.status]}
+                    </Badge>
+                  </div>
                 )}
               </div>
             ))

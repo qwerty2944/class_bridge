@@ -78,6 +78,8 @@ export interface OrganizationMember {
   role: OrgRole;
   // 선생님(role='teacher')일 때만 의미: 담임/부담임. 학생은 null.
   teacher_role: TeacherRole | null;
+  // 학생 회차 주기 — 1 → session_cycle 까지 돌고 1 로 리셋 (기본 8).
+  session_cycle: number;
   joined_at: string;
 }
 
@@ -118,6 +120,8 @@ export interface Attendance {
   status: AttendanceStatus;
   check_in_at: string | null;
   note: string | null;
+  // 이 수업이 이 학생의 몇 회차인지 (1 ~ 주기). 수업 생성 시 자동, 수동 수정 가능.
+  session_no: number | null;
 }
 
 export interface Assignment {

@@ -151,6 +151,18 @@ export async function updateOrgMemberTeacherRole(id: string, teacher_role: Teach
   return data as OrganizationMember;
 }
 
+// 학생 회차 주기 변경 (예: 4 → 1~4 반복).
+export async function updateOrgMemberSessionCycle(id: string, session_cycle: number) {
+  const { data, error } = await sb()
+    .from('organization_members')
+    .update({ session_cycle })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as OrganizationMember;
+}
+
 export async function removeOrgMember(id: string) {
   const { error } = await sb().from('organization_members').delete().eq('id', id);
   if (error) throw error;

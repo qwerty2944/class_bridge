@@ -184,6 +184,25 @@ export function ClassesClient({ initialOrgId }: { initialOrgId: string | null })
                         {s.end_time && ` ~ ${formatHHMM(s.end_time)}`}
                         {s.teacher && ` · ${s.teacher.full_name}`}
                       </p>
+                      {/* 학생별 회차 — 이름 + 몇 회차. */}
+                      {s.attendances?.some((a) => a.session_no != null) && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {[...s.attendances]
+                            .filter((a) => a.session_no != null)
+                            .sort((a, b) =>
+                              (a.student?.full_name ?? '').localeCompare(b.student?.full_name ?? '', 'ko'),
+                            )
+                            .map((a) => (
+                              <span
+                                key={a.id}
+                                className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs"
+                              >
+                                <span className="text-muted-foreground">{a.student?.full_name ?? '?'}</span>
+                                <span className="font-semibold tabular-nums">{a.session_no}회차</span>
+                              </span>
+                            ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>
